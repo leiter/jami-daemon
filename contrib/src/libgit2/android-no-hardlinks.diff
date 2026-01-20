@@ -1,0 +1,45 @@
+diff --git a/src/util/posix.c b/src/util/posix.c
+--- a/src/util/posix.c
++++ b/src/util/posix.c
+@@ -151,6 +151,12 @@ int p_getcwd(char *buffer_out, size_t size)
+
+ int p_rename(const char *from, const char *to)
+ {
++#ifdef __ANDROID__
++	/* Android SELinux policy denies link() syscall for untrusted_app domain.
++	 * Skip the link+unlink optimization and use rename() directly. */
++	if (!rename(from, to))
++		return 0;
++#else
+ 	if (!link(from, to)) {
+ 		p_unlink(from);
+ 		return 0;
+@@ -158,6 +164,7 @@ int p_rename(const char *from, const char *to)
+
+ 	if (!rename(from, to))
+ 		return 0;
++#endif
+
+ 	return -1;
+ }
+diff --git a/src/util/unix/posix.h b/src/util/unix/posix.h
+--- a/src/util/unix/posix.h
++++ b/src/util/unix/posix.h
+@@ -39,7 +39,17 @@
+
+ #define p_readlink(a, b, c) readlink(a, b, c)
+ #define p_symlink(o,n) symlink(o, n)
++
++/*
++ * Android SELinux policy denies link() syscall for untrusted_app domain.
++ * Make this a no-op that returns failure, so callers fall back to copy.
++ */
++#ifdef __ANDROID__
++#define p_link(o,n) (-1)
++#else
+ #define p_link(o,n) link(o, n)
++#endif
++
+ #define p_unlink(p) unlink(p)
+ #define p_mkdir(p,m) mkdir(p, m)
+ extern char *p_realpath(const char *, char *);

@@ -814,7 +814,7 @@ else()
         # Build jni binding
         add_library(${PROJECT_NAME}-jni SHARED ${CMAKE_CURRENT_SOURCE_DIR}/bin/jni/jami_wrapper.cpp)
         target_link_directories(${PROJECT_NAME}-jni PRIVATE ${CONTRIB_PATH}/lib)
-        target_link_libraries(${PROJECT_NAME}-jni ${PROJECT_NAME} android log)
+        target_link_libraries(${PROJECT_NAME}-jni ${PROJECT_NAME} android log PkgConfig::avcodec PkgConfig::avutil)
         target_compile_options(${PROJECT_NAME}-jni PRIVATE
             -fvisibility=hidden
             -Wall -Wextra
