@@ -764,6 +764,105 @@ AccountManager::sendTrustRequestConfirm(const dht::InfoHash& toH, const std::str
     });
 }
 
+/* Pure trust operations (sequential trust-conversation flow) */
+
+void
+AccountManager::sendPureTrustRequest(const std::string& to, const std::vector<uint8_t>& payload)
+{
+    JAMI_WARNING("[Account {}] AccountManager::sendPureTrustRequest to {}", accountId_, to);
+    auto toH = dht::InfoHash(to);
+    if (not toH) {
+        JAMI_ERROR("[Account {}] Unable to send pure trust request to invalid hash: {}", accountId_, to);
+        return;
+    }
+    if (not info_) {
+        JAMI_ERROR("[Account {}] sendPureTrustRequest(): account not loaded", accountId_);
+        return;
+    }
+
+    // Add contact with empty conversationId (pure trust, no conversation yet)
+    // Set confirmed=false since we're initiating the request
+    if (info_->contacts->addContact(toH, false, "")) {
+        // Set trust state to PENDING
+        info_->contacts->setTrustState(toH, TrustState::PENDING);
+        syncDevices();
+    }
+
+    // Send DHT trust request with EMPTY conversationId (new protocol)
+    forEachDevice(toH, [this, toH, payload](const std::shared_ptr<dht::crypto::PublicKey>& dev) {
+        auto to = toH.toString();
+        JAMI_WARNING("[Account {}] [device {}] Sending pure trust request (size {:d}) to: {:s}",
+                     accountId_,
+                     dev->getLongId(),
+                     payload.size(),
+                     to);
+        // Empty conversationId signals pure trust request (new protocol)
+        dht_->putEncrypted(dht::InfoHash::get("inbox:" + dev->getId().toString()),
+                           dev,
+                           dht::TrustRequest(DHT_TYPE_NS, "", payload),  // Empty convId!
+                           [to, size = payload.size()](bool ok) {
+                               if (!ok)
+                                   JAMI_ERROR("Tried to send pure trust request to {:s} (size: "
+                                              "{:d}), but put failed",
+                                              to,
+                                              size);
+                           });
+    });
+}
+
+bool
+AccountManager::acceptPureTrustRequest(const std::string& from)
+{
+    dht::InfoHash f(from);
+    if (not f) {
+        JAMI_ERROR("[Account {}] acceptPureTrustRequest: invalid URI", accountId_);
+        return false;
+    }
+    if (not info_) {
+        JAMI_ERROR("[Account {}] acceptPureTrustRequest: account not loaded", accountId_);
+        return false;
+    }
+
+    if (info_->contacts->acceptPureTrustRequest(f)) {
+        // Send confirmation without conversationId
+        sendPureTrustRequestConfirm(f);
+        syncDevices();
+        return true;
+    }
+    return false;
+}
+
+void
+AccountManager::sendPureTrustRequestConfirm(const dht::InfoHash& toH)
+{
+    JAMI_WARNING("[Account {}] AccountManager::sendPureTrustRequestConfirm to {}",
+                 accountId_,
+                 toH);
+    // Empty conversationId for pure trust confirmation
+    dht::TrustRequest answer {DHT_TYPE_NS, ""};
+    answer.confirm = true;
+
+    forEachDevice(toH, [this, toH, answer](const std::shared_ptr<dht::crypto::PublicKey>& dev) {
+        JAMI_WARNING("[Account {}] sending pure trust request reply: {} / {}", accountId_, toH, dev->getLongId());
+        dht_->putEncrypted(dht::InfoHash::get("inbox:" + dev->getId().toString()), dev, answer);
+    });
+}
+
+TrustState
+AccountManager::getTrustState(const std::string& uri) const
+{
+    if (not info_) {
+        JAMI_ERROR("[Account {}] getTrustState: account not loaded", accountId_);
+        return TrustState::NONE;
+    }
+    dht::InfoHash h(uri);
+    if (not h) {
+        JAMI_ERROR("[Account {}] getTrustState: invalid URI", accountId_);
+        return TrustState::NONE;
+    }
+    return info_->contacts->getTrustState(h);
+}
+
 void
 AccountManager::forEachDevice(const dht::InfoHash& to,
                               std::function<void(const std::shared_ptr<dht::crypto::PublicKey>&)>&& op,

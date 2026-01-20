@@ -84,7 +84,7 @@ AudioFile::AudioFile(const std::string& fileName, unsigned int sampleRate, AVSam
     buffer_->nb_samples = total_samples;
     buffer_->format = format_.sampleFormat;
     buffer_->sample_rate = format_.sample_rate;
-    av_channel_layout_default(&buffer_->ch_layout, format_.nb_channels);
+    JAMI_LIBAV_SET_CHANNELS(buffer_.get(), format_.nb_channels);
     av_frame_get_buffer(buffer_.get(), 0);
 
     size_t outPos = 0;

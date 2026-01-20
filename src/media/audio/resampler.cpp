@@ -48,6 +48,7 @@ Resampler::reinit(const AVFrame* in, const AVFrame* out)
         throw std::bad_alloc();
     }
 
+#if JAMI_LIBAV_HAS_NEW_CHANNEL_LAYOUT
     int ret = av_opt_set_chlayout(swrCtx, "ichl", &in->ch_layout, 0);
     if (ret < 0) {
         swr_free(&swrCtx);
@@ -59,6 +60,16 @@ Resampler::reinit(const AVFrame* in, const AVFrame* out)
                    libav_utils::getError(ret));
         throw std::runtime_error("Failed to set input channel layout");
     }
+#else
+    int ret = av_opt_set_int(swrCtx, "icl", in->channel_layout, 0);
+    if (ret < 0) {
+        swr_free(&swrCtx);
+        JAMI_ERROR("[{}] Failed to set input channel layout: {}",
+                   fmt::ptr(this),
+                   libav_utils::getError(ret));
+        throw std::runtime_error("Failed to set input channel layout");
+    }
+#endif
     ret = av_opt_set_int(swrCtx, "isr", in->sample_rate, 0);
     if (ret < 0) {
         swr_free(&swrCtx);
@@ -78,6 +89,7 @@ Resampler::reinit(const AVFrame* in, const AVFrame* out)
         throw std::runtime_error("Failed to set input sample format");
     }
 
+#if JAMI_LIBAV_HAS_NEW_CHANNEL_LAYOUT
     ret = av_opt_set_chlayout(swrCtx, "ochl", &out->ch_layout, 0);
     if (ret < 0) {
         swr_free(&swrCtx);
@@ -89,6 +101,16 @@ Resampler::reinit(const AVFrame* in, const AVFrame* out)
                    libav_utils::getError(ret));
         throw std::runtime_error("Failed to set output channel layout");
     }
+#else
+    ret = av_opt_set_int(swrCtx, "ocl", out->channel_layout, 0);
+    if (ret < 0) {
+        swr_free(&swrCtx);
+        JAMI_ERROR("[{}] Failed to set output channel layout: {}",
+                   fmt::ptr(this),
+                   libav_utils::getError(ret));
+        throw std::runtime_error("Failed to set output channel layout");
+    }
+#endif
     ret = av_opt_set_int(swrCtx, "osr", out->sample_rate, 0);
     if (ret < 0) {
         swr_free(&swrCtx);
@@ -119,10 +141,10 @@ Resampler::reinit(const AVFrame* in, const AVFrame* out)
      * LFE downmixing is optional, so any coefficient can be used, we use +6dB for mono and
      * +0dB in each channel for stereo.
      */
-    if (in->ch_layout.u.mask == AV_CH_LAYOUT_5POINT1 || in->ch_layout.u.mask == AV_CH_LAYOUT_5POINT1_BACK) {
+    if (JAMI_LIBAV_CHANNEL_LAYOUT_MASK(in) == AV_CH_LAYOUT_5POINT1 || JAMI_LIBAV_CHANNEL_LAYOUT_MASK(in) == AV_CH_LAYOUT_5POINT1_BACK) {
         int ret = 0;
         // NOTE: MSVC is unable to allocate dynamic size arrays on the stack
-        if (out->ch_layout.nb_channels == 2) {
+        if (JAMI_LIBAV_NB_CHANNELS(out) == 2) {
             double matrix[2][6];
             // L = 1.0*FL + 0.707*FC + 0.707*BL + 1.0*LFE
             matrix[0][0] = 1;
@@ -224,8 +246,7 @@ Resampler::resample(const AVFrame* input, AVFrame* output)
             av_frame_copy_props(newOutput, output);
             newOutput->format = output->format;
             newOutput->nb_samples = static_cast<int>(targetOutputLength);
-            newOutput->ch_layout = output->ch_layout;
-            newOutput->channel_layout = output->channel_layout;
+            JAMI_LIBAV_COPY_CHANNEL_LAYOUT(newOutput, output);
             newOutput->sample_rate = output->sample_rate;
             int bufferRet = av_frame_get_buffer(newOutput, 0);
             if (bufferRet < 0) {
@@ -239,7 +260,7 @@ Resampler::resample(const AVFrame* input, AVFrame* output)
             bufferRet = av_samples_set_silence(newOutput->data,
                                                0,
                                                static_cast<int>(sampleOffset),
-                                               output->ch_layout.nb_channels,
+                                               JAMI_LIBAV_NB_CHANNELS(output),
                                                static_cast<AVSampleFormat>(output->format));
             if (bufferRet < 0) {
                 JAMI_ERROR("[{}] Failed to set silence on new output frame: {}",
@@ -254,7 +275,7 @@ Resampler::resample(const AVFrame* input, AVFrame* output)
                                         static_cast<int>(sampleOffset),
                                         0,
                                         output->nb_samples,
-                                        output->ch_layout.nb_channels,
+                                        JAMI_LIBAV_NB_CHANNELS(output),
                                         static_cast<AVSampleFormat>(output->format));
             if (bufferRet < 0) {
                 JAMI_ERROR("[{}] Failed to copy data to new output frame: {}",
@@ -283,7 +304,7 @@ std::unique_ptr<AudioFrame>
 Resampler::resample(std::unique_ptr<AudioFrame>&& in, const AudioFormat& format)
 {
     if (in->pointer()->sample_rate == (int) format.sample_rate
-        && in->pointer()->ch_layout.nb_channels == (int) format.nb_channels
+        && JAMI_LIBAV_NB_CHANNELS(in->pointer()) == (int) format.nb_channels
         && (AVSampleFormat) in->pointer()->format == format.sampleFormat) {
         return std::move(in);
     }
@@ -304,7 +325,7 @@ Resampler::resample(std::shared_ptr<AudioFrame>&& in, const AudioFormat& format)
         return {};
     }
 
-    if (inPtr->sample_rate == (int) format.sample_rate && inPtr->ch_layout.nb_channels == (int) format.nb_channels
+    if (inPtr->sample_rate == (int) format.sample_rate && JAMI_LIBAV_NB_CHANNELS(inPtr) == (int) format.nb_channels
         && (AVSampleFormat) inPtr->format == format.sampleFormat) {
         return std::move(in);
     }

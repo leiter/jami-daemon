@@ -115,12 +115,12 @@ static void
 fillAudioFrameProps(AVFrame* frame, const MediaStream& ms)
 {
     frame->format = ms.format;
-    av_channel_layout_default(&frame->ch_layout, ms.nbChannels);
+    JAMI_LIBAV_SET_CHANNELS(frame, ms.nbChannels);
     frame->nb_samples = ms.frameSize;
     frame->sample_rate = ms.sampleRate;
     CPPUNIT_ASSERT(frame->format > AV_SAMPLE_FMT_NONE);
     CPPUNIT_ASSERT(frame->nb_samples > 0);
-    CPPUNIT_ASSERT(frame->ch_layout.u.mask != 0);
+    CPPUNIT_ASSERT(JAMI_LIBAV_CHANNEL_LAYOUT_MASK(frame) != 0);
 }
 
 void
@@ -137,17 +137,17 @@ MediaFilterTest::testAudioFilter()
     AudioFrame af;
     auto frame = af.pointer();
     frame->format = format;
-    av_channel_layout_from_mask(&frame->ch_layout, AV_CH_LAYOUT_STEREO);
+    JAMI_LIBAV_SET_CHANNEL_LAYOUT_FROM_MASK(frame, AV_CH_LAYOUT_STEREO);
     frame->nb_samples = nbSamples;
     frame->sample_rate = sampleRate;
 
     // construct the filter parameters
     auto params
-        = MediaStream("in1", format, rational<int>(1, sampleRate), sampleRate, frame->ch_layout.nb_channels, nbSamples);
+        = MediaStream("in1", format, rational<int>(1, sampleRate), sampleRate, JAMI_LIBAV_NB_CHANNELS(frame), nbSamples);
 
     // allocate and fill frame buffers
     CPPUNIT_ASSERT(av_frame_get_buffer(frame, 0) >= 0);
-    fill_samples(reinterpret_cast<uint16_t*>(frame->data[0]), sampleRate, nbSamples, frame->ch_layout.nb_channels, 440.0);
+    fill_samples(reinterpret_cast<uint16_t*>(frame->data[0]), sampleRate, nbSamples, JAMI_LIBAV_NB_CHANNELS(frame), 440.0);
 
     // prepare filter
     std::vector<MediaStream> vec;
@@ -190,7 +190,7 @@ MediaFilterTest::testAudioMixing()
         fill_samples(reinterpret_cast<uint16_t*>(frame1->data[0]),
                      frame1->sample_rate,
                      frame1->nb_samples,
-                     frame1->ch_layout.nb_channels,
+                     JAMI_LIBAV_NB_CHANNELS(frame1),
                      440.0,
                      t1);
 
@@ -200,7 +200,7 @@ MediaFilterTest::testAudioMixing()
         fill_samples(reinterpret_cast<uint16_t*>(frame2->data[0]),
                      frame2->sample_rate,
                      frame2->nb_samples,
-                     frame2->ch_layout.nb_channels,
+                     JAMI_LIBAV_NB_CHANNELS(frame2),
                      329.6276,
                      t2);
 
@@ -210,7 +210,7 @@ MediaFilterTest::testAudioMixing()
         fill_samples(reinterpret_cast<uint16_t*>(frame3->data[0]),
                      frame3->sample_rate,
                      frame3->nb_samples,
-                     frame3->ch_layout.nb_channels,
+                     JAMI_LIBAV_NB_CHANNELS(frame3),
                      349.2282,
                      t3);
 
@@ -330,7 +330,7 @@ MediaFilterTest::testReinit()
     AudioFrame af;
     auto frame = af.pointer();
     frame->format = AV_SAMPLE_FMT_S16;
-    av_channel_layout_from_mask(&frame->ch_layout, AV_CH_LAYOUT_STEREO);
+    JAMI_LIBAV_SET_CHANNEL_LAYOUT_FROM_MASK(frame, AV_CH_LAYOUT_STEREO);
     frame->nb_samples = 100;
     frame->sample_rate = 44100;
 
@@ -339,7 +339,7 @@ MediaFilterTest::testReinit()
                               frame->format,
                               rational<int>(1, 16000),
                               16000,
-                              frame->ch_layout.nb_channels,
+                              JAMI_LIBAV_NB_CHANNELS(frame),
                               frame->nb_samples);
 
     // allocate and fill frame buffers
@@ -347,7 +347,7 @@ MediaFilterTest::testReinit()
     fill_samples(reinterpret_cast<uint16_t*>(frame->data[0]),
                  frame->sample_rate,
                  frame->nb_samples,
-                 frame->ch_layout.nb_channels,
+                 JAMI_LIBAV_NB_CHANNELS(frame),
                  440.0);
 
     // prepare filter

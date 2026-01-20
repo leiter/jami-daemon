@@ -678,7 +678,9 @@ MediaDecoder::decode(AVPacket& packet)
         decoderCtx_->time_base.num = 1;
         decoderCtx_->time_base.den = decoderCtx_->sample_rate;
     }
+#if LIBAVUTIL_VERSION_INT >= AV_VERSION_INT(57, 28, 100)
     frame->time_base = decoderCtx_->time_base;
+#endif
     if (resolutionChangedCallback_) {
         if (decoderCtx_->width != width_ or decoderCtx_->height != height_) {
             JAMI_DBG("Resolution changed from %dx%d to %dx%d", width_, height_, decoderCtx_->width, decoderCtx_->height);

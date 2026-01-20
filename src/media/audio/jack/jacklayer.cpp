@@ -107,7 +107,7 @@ JackLayer::write(const AudioFrame& buffer)
 {
     auto num_samples = buffer.pointer()->nb_samples;
     auto num_bytes = num_samples * sizeof(float);
-    auto channels = std::min<size_t>(out_ringbuffers_.size(), buffer.pointer()->ch_layout.nb_channels);
+    auto channels = std::min<size_t>(out_ringbuffers_.size(), JAMI_LIBAV_NB_CHANNELS(buffer.pointer()));
     for (size_t i = 0; i < channels; ++i) {
         jack_ringbuffer_write(out_ringbuffers_[i], (const char*) buffer.pointer()->extended_data[i], num_bytes);
     }

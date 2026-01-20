@@ -633,7 +633,7 @@ MediaEncoder::prepareEncoderContext(const AVCodec* outputCodec, bool is_video)
             audioOpts_.nbChannels = std::clamp(audioOpts_.nbChannels, 1, 2);
             JAMI_ERR() << "[" << encoderName << "] Clamping invalid channel count: " << audioOpts_.nbChannels;
         }
-        av_channel_layout_default(&encoderCtx->ch_layout, audioOpts_.nbChannels);
+        JAMI_LIBAV_SET_CHANNELS(encoderCtx, audioOpts_.nbChannels);
         if (audioOpts_.frameSize) {
             encoderCtx->frame_size = audioOpts_.frameSize;
             JAMI_DBG() << "[" << encoderName << "] Frame size " << encoderCtx->frame_size;

@@ -222,6 +222,20 @@ public:
     void sendTrustRequestConfirm(const dht::InfoHash& to,
                                  const std::string& conversationId); // TODO ideally no convId here
 
+    // Pure trust operations (sequential trust-conversation flow)
+
+    /** Send a pure trust request (no conversation attached) */
+    void sendPureTrustRequest(const std::string& to, const std::vector<uint8_t>& payload);
+
+    /** Accept a pure trust request without starting conversation */
+    bool acceptPureTrustRequest(const std::string& from);
+
+    /** Send confirmation for pure trust request */
+    void sendPureTrustRequestConfirm(const dht::InfoHash& to);
+
+    /** Get contact's trust state */
+    TrustState getTrustState(const std::string& uri) const;
+
     // Contact
 
     /**

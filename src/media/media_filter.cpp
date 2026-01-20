@@ -175,7 +175,7 @@ MediaFilter::feedInput(AVFrame* frame, const std::string& inputName)
         bool videoParamsChanged = ms.isVideo && (ms.width != frame->width || ms.height != frame->height);
         bool audioParamsChanged = !ms.isVideo
                                   && (ms.sampleRate != frame->sample_rate
-                                      || ms.nbChannels != frame->ch_layout.nb_channels);
+                                      || ms.nbChannels != JAMI_LIBAV_NB_CHANNELS(frame));
 
         if (formatChanged || videoParamsChanged || audioParamsChanged) {
             ms.update(frame);
@@ -283,7 +283,11 @@ MediaFilter::initInputFilter(AVFilterInOut* in, const MediaStream& msp)
         buffersrc = avfilter_get_by_name("buffer");
     } else {
         params->sample_rate = msp.sampleRate;
+#if JAMI_LIBAV_HAS_NEW_CHANNEL_LAYOUT
         av_channel_layout_default(&params->ch_layout, msp.nbChannels);
+#else
+        params->channel_layout = av_get_default_channel_layout(msp.nbChannels);
+#endif
         buffersrc = avfilter_get_by_name("abuffer");
     }
 

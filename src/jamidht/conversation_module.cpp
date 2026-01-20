@@ -1906,6 +1906,16 @@ ConversationModule::onTrustRequest(const std::string& uri,
                                    const std::vector<uint8_t>& payload,
                                    time_t received)
 {
+    // Pure trust request: If conversationId is empty, this is the new protocol
+    // where trust is handled independently from conversation creation.
+    // In this case, ConversationModule has nothing to do - trust is handled by ContactList.
+    if (conversationId.empty()) {
+        JAMI_DEBUG("[Account {}] Pure trust request from {} - no conversation to create (handled by ContactList)",
+                   pimpl_->accountId_, uri);
+        return;
+    }
+
+    // LEGACY FLOW: Coupled trust+conversation request
     std::unique_lock lk(pimpl_->conversationsRequestsMtx_);
     ConversationRequest req;
     req.from = uri;
@@ -1966,8 +1976,19 @@ ConversationModule::onConversationRequest(const std::string& from, const Json::V
 
     if (isOneToOne) {
         auto contactInfo = pimpl_->accountManager_->getContactInfo(from);
-        if (contactInfo && contactInfo->confirmed && !contactInfo->isBanned() && contactInfo->isActive()) {
-            JAMI_LOG("[Account {}] Contact {} is confirmed, cloning {}", pimpl_->accountId_, from, convId);
+
+        // Trust guard: For 1:1 conversations, require trust relationship
+        if (!contactInfo || !contactInfo->canHaveConversation()) {
+            JAMI_WARNING("[Account {}] Rejecting 1:1 conversation request from untrusted contact: {} (trustState: {})",
+                         pimpl_->accountId_,
+                         from,
+                         contactInfo ? static_cast<int>(contactInfo->trustState) : -1);
+            return;
+        }
+
+        // Auto-accept for confirmed trusted contacts
+        if (contactInfo->confirmed && !contactInfo->isBanned() && contactInfo->isActive()) {
+            JAMI_LOG("[Account {}] Contact {} is confirmed/trusted, auto-accepting {}", pimpl_->accountId_, from, convId);
             lk.unlock();
             updateConvForContact(from, contactInfo->conversationId, convId);
             pimpl_->cloneConversationFrom(req);
@@ -2058,6 +2079,19 @@ ConversationModule::startConversation(ConversationMode mode, const dht::InfoHash
     auto acc = pimpl_->account_.lock();
     if (!acc)
         return {};
+
+    // Trust guard: For 1:1 conversations, verify trust prerequisite
+    if (mode == ConversationMode::ONE_TO_ONE && otherMember) {
+        auto contact = pimpl_->accountManager_->getContactInfo(otherMember.toString());
+        if (!contact || !contact->canHaveConversation()) {
+            JAMI_WARNING("[Account {}] Cannot create 1:1 conversation: contact {} not trusted (trustState: {})",
+                         pimpl_->accountId_,
+                         otherMember.toString(),
+                         contact ? static_cast<int>(contact->trustState) : -1);
+            return {};
+        }
+    }
+
     std::vector<DeviceId> kd;
     for (const auto& [id, _] : acc->getKnownDevices())
         kd.emplace_back(id);
