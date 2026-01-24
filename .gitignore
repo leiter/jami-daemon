@@ -114,6 +114,23 @@ Debug/
 
 # iOS
 /build-ios*
+/contrib/ios-*/
+/contrib/aarch64-apple-darwin/
+
+# Contrib build artifacts (all platforms)
+/contrib/native*/
+/contrib/x86_64-*/
+/contrib/arm-*/
+/contrib/armv7-*/
+/contrib/i686-*/
+
+# Extras/tools build artifacts
+/extras/tools/autoconf/
+/extras/tools/automake/
+/extras/tools/m4/
+/extras/tools/pkgconfig/
+/extras/tools/*.tar.gz
+/extras/tools/*.tar.xz
 
 build-aux/
 configure
