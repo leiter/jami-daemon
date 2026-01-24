@@ -447,7 +447,7 @@ ffmpeg: ffmpeg-$(FFMPEG_HASH).tar.xz
 	$(MOVE)
 
 .ffmpeg: ffmpeg .sum-ffmpeg
-	cd $< && $(HOSTVARS) ./configure \
+	cd $< && $(HOSTVARS) /bin/bash ./configure \
 		--extra-cflags="$(CFLAGS)" \
 		--extra-ldflags="$(LDFLAGS)" $(FFMPEGCONF) \
 		--prefix="$(PREFIX)" --enable-static --disable-shared \

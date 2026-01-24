@@ -68,9 +68,9 @@ endif
 .libressl: libressl .sum-libressl
 	mkdir -p "$(PREFIX)/include"
 ifdef HAVE_WIN32
-	cd $< && $(HOSTVARS) CPPFLAGS=-D__MINGW_USE_VC2005_COMPAT ./configure $(HOSTCONF) && $(MAKE) && $(MAKE) install
+	cd $< && $(HOSTVARS) CPPFLAGS=-D__MINGW_USE_VC2005_COMPAT /bin/bash ./configure $(HOSTCONF) && $(MAKE) && $(MAKE) install
 else ifdef HAVE_WIN64
-	cd $< && $(HOSTVARS) ./configure $(HOSTCONF) && $(MAKE) && $(MAKE) install
+	cd $< && $(HOSTVARS) /bin/bash ./configure $(HOSTCONF) && $(MAKE) && $(MAKE) install
 else
 	cd $< && mkdir -p build && cd build && $(HOSTVARS) $(CMAKE) $(LIBRESSL_CONF) .. && $(MAKE) && $(MAKE) install
 endif

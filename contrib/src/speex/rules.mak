@@ -30,6 +30,6 @@ endif
 
 .speex: speex .sum-speex
 	mkdir -p $</m4 && $(RECONF)
-	cd $< && $(HOSTVARS) ./configure $(HOSTCONF) $(SPEEX_CONF)
+	cd $< && $(HOSTVARS) /bin/bash ./configure $(HOSTCONF) $(SPEEX_CONF)
 	cd $< && $(MAKE) install
 	touch $@

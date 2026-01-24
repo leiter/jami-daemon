@@ -12,8 +12,8 @@ asio: asio-$(ASIO_VERSION).tar.gz
 	$(MOVE)
 
 .asio: asio .sum-asio
-	cd $< && ./autogen.sh
-	cd $< && $(HOSTVARS) ./configure --without-boost $(HOSTCONF)
+	cd $< && /bin/bash ./autogen.sh
+	cd $< && $(HOSTVARS) /bin/bash ./configure --without-boost $(HOSTCONF)
 	cd $< && $(MAKE) install
 	mkdir -p $(PREFIX)/lib/pkgconfig
 	mv $(PREFIX)/share/pkgconfig/asio.pc $(PREFIX)/lib/pkgconfig/asio.pc

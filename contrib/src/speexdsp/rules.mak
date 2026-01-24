@@ -42,6 +42,6 @@ endif
 
 .speexdsp: speexdsp .sum-speexdsp
 	mkdir -p $</m4 && $(RECONF)
-	cd $< && $(HOSTVARS) ./configure $(HOSTCONF) $(SPEEXDSP_CONF)
+	cd $< && $(HOSTVARS) /bin/bash ./configure $(HOSTCONF) $(SPEEXDSP_CONF)
 	cd $< && $(MAKE) install
 	touch $@

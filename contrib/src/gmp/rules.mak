@@ -27,7 +27,7 @@ endif
 .gmp: gmp
 ifdef HAVE_IOS
 	$(RECONF)
-	cd $< && $(HOSTVARS) CFLAGS="$(CFLAGS) -O3" ./configure --disable-assembly --without-clock-gettime $(HOSTCONF)
+	cd $< && $(HOSTVARS) CFLAGS="$(CFLAGS) -O3" /bin/bash ./configure --disable-assembly --without-clock-gettime $(HOSTCONF)
 else
 ifdef HAVE_MACOSX
 	$(RECONF)

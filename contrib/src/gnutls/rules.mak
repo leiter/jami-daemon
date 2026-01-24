@@ -65,15 +65,15 @@ endif
 .gnutls: gnutls
 	$(RECONF)
 ifdef HAVE_ANDROID
-	cd $< && $(HOSTVARS) ./configure $(GNUTLS_CONF)
+	cd $< && $(HOSTVARS) /bin/bash ./configure $(GNUTLS_CONF)
 else
 ifdef HAVE_IOS
-	cd $< && $(HOSTVARS) ac_cv_func_clock_gettime=no ./configure $(GNUTLS_CONF)
+	cd $< && $(HOSTVARS) ac_cv_func_clock_gettime=no /bin/bash ./configure $(GNUTLS_CONF)
 else
 ifdef HAVE_MACOSX
-	cd $< && $(HOSTVARS) ac_cv_func_clock_gettime=no ./configure $(GNUTLS_CONF)
+	cd $< && $(HOSTVARS) ac_cv_func_clock_gettime=no /bin/bash ./configure $(GNUTLS_CONF)
 else
-	cd $< && $(HOSTVARS) CFLAGS="$(CFLAGS)" ./configure $(GNUTLS_CONF)
+	cd $< && $(HOSTVARS) CFLAGS="$(CFLAGS)" /bin/bash ./configure $(GNUTLS_CONF)
 endif
 endif
 endif

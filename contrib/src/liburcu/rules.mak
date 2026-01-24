@@ -20,6 +20,6 @@ liburcu: liburcu-$(LIBURCU_VERSION).tar.bz2 .sum-liburcu
 	$(MOVE)
 
 .liburcu: liburcu
-	cd $< && $(HOSTVARS) ./configure $(HOSTCONF)
+	cd $< && $(HOSTVARS) /bin/bash ./configure $(HOSTCONF)
 	cd $< && $(MAKE) install
 	touch $@

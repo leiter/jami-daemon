@@ -28,6 +28,6 @@ zlib: zlib-$(ZLIB_VERSION).tar.gz .sum-zlib
 	$(MOVE)
 
 .zlib: zlib
-	cd $< && $(HOSTVARS) $(ZLIB_CONFIG_VARS) ./configure --prefix=$(PREFIX) --static
+	cd $< && $(HOSTVARS) $(ZLIB_CONFIG_VARS) /bin/bash ./configure --prefix=$(PREFIX) --static
 	cd $< && $(MAKE) install
 	touch $@

@@ -23,6 +23,6 @@ iconv: libiconv-$(LIBICONV_VERSION).tar.gz .sum-iconv
 	$(MOVE)
 
 .iconv: iconv
-	cd $< && $(HOSTVARS) ./configure $(HOSTCONF) --disable-nls
+	cd $< && $(HOSTVARS) /bin/bash ./configure $(HOSTCONF) --disable-nls
 	cd $< && $(MAKE) install
 	touch $@

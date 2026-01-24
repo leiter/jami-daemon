@@ -27,6 +27,6 @@ LTTNG_UST_CONF :=           \
 	--enable-shared
 
 .lttng-ust: lttng-ust
-	cd $< && $(HOSTVARS) ./configure $(LTTNG_UST_CONF)
+	cd $< && $(HOSTVARS) /bin/bash ./configure $(LTTNG_UST_CONF)
 	cd $< && $(MAKE) install
 	touch $@

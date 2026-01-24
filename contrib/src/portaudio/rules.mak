@@ -24,6 +24,6 @@ portaudio: portaudio-$(PORTAUDIO_VERSION).tgz .sum-portaudio
 
 .portaudio: portaudio
 	$(APPLY) $(SRC)/portaudio/dsound_utf8.patch
-	cd $< && $(HOSTVARS) ./configure $(HOSTCONF) $(PORTAUDIOCONF)
+	cd $< && $(HOSTVARS) /bin/bash ./configure $(HOSTCONF) $(PORTAUDIOCONF)
 	cd $< && $(MAKE) install
 	touch $@

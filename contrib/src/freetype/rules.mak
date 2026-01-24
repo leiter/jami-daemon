@@ -29,7 +29,7 @@ freetype: freetype-$(FREETYPE_HASH).tar.gz .sum-freetype
 
 .freetype: freetype
 	cd $< && $(HOSTVARS) sh autogen.sh
-	cd $< && $(HOSTVARS) ./configure $(FTCONFIG)
+	cd $< && $(HOSTVARS) /bin/bash ./configure $(FTCONFIG)
 	cd $< && $(MAKE)
 	cd $< && $(MAKE) install
 	touch $@

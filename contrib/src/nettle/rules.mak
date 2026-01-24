@@ -27,6 +27,6 @@ ifdef HAVE_IOS
 	cd $< && sed -i.orig s/-ggdb3//g configure.ac
 endif
 	cd $< && autoreconf
-	cd $< && $(HOSTVARS) ./configure --disable-documentation $(HOSTCONF)
+	cd $< && $(HOSTVARS) /bin/bash ./configure --disable-documentation $(HOSTCONF)
 	cd $< && $(MAKE) install
 	touch $@
