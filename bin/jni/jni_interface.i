@@ -87,6 +87,33 @@
   return $null;
 }
 
+/* Global exception handler - catches any C++ exception not covered by specific typemaps */
+%exception {
+  try {
+    $action
+  } catch (const std::runtime_error& e) {
+    jclass excep = jenv->FindClass("java/lang/IllegalStateException");
+    if (excep)
+      jenv->ThrowNew(excep, e.what());
+    return $null;
+  } catch (const std::invalid_argument& e) {
+    jclass excep = jenv->FindClass("java/lang/IllegalArgumentException");
+    if (excep)
+      jenv->ThrowNew(excep, e.what());
+    return $null;
+  } catch (const std::exception& e) {
+    jclass excep = jenv->FindClass("java/lang/RuntimeException");
+    if (excep)
+      jenv->ThrowNew(excep, e.what());
+    return $null;
+  } catch (...) {
+    jclass excep = jenv->FindClass("java/lang/RuntimeException");
+    if (excep)
+      jenv->ThrowNew(excep, "Unknown native exception");
+    return $null;
+  }
+}
+
 /* Avoid uint64_t to be converted to BigInteger */
 %apply int64_t { uint64_t };
 %apply int64_t { const uint64_t };

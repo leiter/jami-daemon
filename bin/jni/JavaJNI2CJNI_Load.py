@@ -56,7 +56,7 @@ def parse_java_file(input_stream, package, module):
 	outputs = []
 	package_prefix = "Java_%s_%sJNI" % (package.replace(".", "_"), module)
 	for line in input_stream:
-		definition = re.match(r'.*public final static native ([^\( ]*) ([^\)]*)\(([^)]*)\).*',line)
+		definition = re.match(r'.*(?:public|private) final static native ([^\( ]*) ([^\)]*)\(([^)]*)\).*',line)
 		if definition is not None:
 			retour = definition.group(1)
 			name = definition.group(2)
