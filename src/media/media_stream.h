@@ -101,7 +101,7 @@ struct MediaStream
                 format = c->sample_fmt;
                 isVideo = false;
                 sampleRate = c->sample_rate;
-                nbChannels = c->ch_layout.nb_channels;
+                nbChannels = JAMI_LIBAV_NB_CHANNELS(c);
                 frameSize = c->frame_size;
                 break;
             default:
@@ -133,7 +133,7 @@ struct MediaStream
             height = f->height;
         } else {
             sampleRate = f->sample_rate;
-            nbChannels = f->ch_layout.nb_channels;
+            nbChannels = JAMI_LIBAV_NB_CHANNELS(f);
             timeBase = rational<int>(1, f->sample_rate);
             if (!frameSize)
                 frameSize = f->nb_samples;

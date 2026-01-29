@@ -43,14 +43,24 @@ public:
     using OnConfirmation = std::function<void(const std::string&, const std::string&)>;
     using OnDevicesChanged = std::function<void(const std::map<dht::PkId, KnownDevice>&)>;
 
+    // New callbacks for pure trust flow (sequential trust-conversation)
+    using OnPureTrustRequest = std::function<void(const std::string& uri,
+                                                   const std::vector<uint8_t>& payload,
+                                                   time_t received)>;
+    using OnTrustConfirmed = std::function<void(const std::string& uri)>;
+    using OnTrustStateChanged = std::function<void(const std::string& uri, TrustState state)>;
+
     struct OnChangeCallback
     {
         OnContactAdded contactAdded;
         OnContactRemoved contactRemoved;
-        OnIncomingTrustRequest trustRequest;
+        OnIncomingTrustRequest trustRequest;  // Keep for backward compat with coupled flow
         OnDevicesChanged devicesChanged;
         OnAcceptConversation acceptConversation;
         OnConfirmation onConfirmation;
+        OnPureTrustRequest pureTrustRequest;  // New: pure trust flow
+        OnTrustConfirmed trustConfirmed;      // New: trust confirmation
+        OnTrustStateChanged trustStateChanged; // New: trust state changes
     };
 
     ContactList(const std::string& accountId,
@@ -118,6 +128,25 @@ public:
                             const std::string& deviceId = ""); // ToDO this is a bit dirty imho
     bool acceptTrustRequest(const dht::InfoHash& from);
     bool discardTrustRequest(const dht::InfoHash& from);
+
+    /* Pure trust operations (sequential trust-conversation flow) */
+
+    /** Handle incoming pure trust request (empty conversationId).
+     *  Returns true if request should be immediately accepted (already trusted). */
+    bool onPureTrustRequest(const dht::InfoHash& peer_account,
+                            const std::shared_ptr<dht::crypto::PublicKey>& peer_device,
+                            time_t received,
+                            bool confirm,
+                            std::vector<uint8_t>&& payload);
+
+    /** Accept a pure trust request without starting a conversation */
+    bool acceptPureTrustRequest(const dht::InfoHash& from);
+
+    /** Set trust state for a contact */
+    void setTrustState(const dht::InfoHash& peer, TrustState state);
+
+    /** Get trust state for a contact */
+    TrustState getTrustState(const dht::InfoHash& peer) const;
 
     /* Devices */
     const std::map<dht::PkId, KnownDevice>& getKnownDevices() const { return knownDevices_; }

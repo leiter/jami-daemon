@@ -281,7 +281,7 @@ fillWithSilence(AVFrame* frame)
     int ret = av_samples_set_silence(frame->extended_data,
                                      0,
                                      frame->nb_samples,
-                                     frame->ch_layout.nb_channels,
+                                     JAMI_LIBAV_NB_CHANNELS(frame),
                                      (AVSampleFormat) frame->format);
     if (ret < 0)
         JAMI_ERR() << "Failed to fill frame with silence";
@@ -291,7 +291,7 @@ AudioFormat
 getFormat(const AVFrame* frame)
 {
     return AudioFormat {static_cast<unsigned>(frame->sample_rate),
-                        static_cast<unsigned>(frame->ch_layout.nb_channels),
+                        static_cast<unsigned>(JAMI_LIBAV_NB_CHANNELS(frame)),
                         static_cast<AVSampleFormat>(frame->format)};
 }
 

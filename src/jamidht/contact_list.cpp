@@ -101,11 +101,26 @@ ContactList::addContact(const dht::InfoHash& h, bool confirmed, const std::strin
     c->second.removed = 0;
     c->second.conversationId = conversationId;
     c->second.confirmed |= confirmed;
+
+    // Update trust state based on confirmation
+    auto previousTrustState = c->second.trustState;
+    if (confirmed) {
+        c->second.trustState = TrustState::TRUSTED;
+    } else if (c->second.trustState == TrustState::NONE) {
+        // We're adding a contact (sending trust request)
+        c->second.trustState = TrustState::PENDING;
+    }
+
     auto hStr = h.toString();
     trust_->setCertificateStatus(hStr, dhtnet::tls::TrustStore::PermissionStatus::ALLOWED);
     saveContacts();
     lk.unlock();
     callbacks_.contactAdded(hStr, c->second.confirmed);
+
+    // Notify trust state change
+    if (callbacks_.trustStateChanged && previousTrustState != c->second.trustState)
+        callbacks_.trustStateChanged(hStr, c->second.trustState);
+
     return true;
 }
 
@@ -267,8 +282,34 @@ ContactList::loadContacts()
     }
 
     JAMI_WARNING("[Account {}] [Contacts] Loaded {} contacts", accountId_, contacts.size());
+
+    // Backward compatibility migration: set trustState for existing contacts
+    // that were created before trustState was introduced
+    bool needsSave = false;
+    for (auto& [id, contact] : contacts) {
+        if (contact.trustState == TrustState::NONE) {
+            // Migrate based on existing state
+            if (contact.confirmed) {
+                // Confirmed contacts have mutual trust
+                contact.trustState = TrustState::TRUSTED;
+                needsSave = true;
+                JAMI_LOG("[Account {}] [Contacts] Migrated contact {} to TRUSTED", accountId_, id);
+            } else if (contact.isActive()) {
+                // Active but not confirmed means we sent a request
+                contact.trustState = TrustState::PENDING;
+                needsSave = true;
+                JAMI_LOG("[Account {}] [Contacts] Migrated contact {} to PENDING", accountId_, id);
+            }
+        }
+    }
+
     for (auto& peer : contacts)
         updateContact(peer.first, peer.second, false);
+
+    if (needsSave) {
+        JAMI_LOG("[Account {}] [Contacts] Saving migrated contacts", accountId_);
+        saveContacts();
+    }
 }
 
 void
@@ -323,6 +364,15 @@ ContactList::onTrustRequest(const dht::InfoHash& peer_account,
                             const std::string& conversationId,
                             std::vector<uint8_t>&& payload)
 {
+    // Check if this is a pure trust request (empty conversationId = new protocol)
+    bool isPureTrust = conversationId.empty();
+    if (isPureTrust) {
+        JAMI_DEBUG("[Account {}] [Contacts] Received pure trust request from {} (new protocol)",
+                   accountId_, peer_account);
+        return onPureTrustRequest(peer_account, peer_device, received, confirm, std::move(payload));
+    }
+
+    // LEGACY FLOW: Handle coupled trust+conversation request
     bool accept = false;
     // Check existing contact
     std::unique_lock lk(mutex_);
@@ -340,6 +390,7 @@ ContactList::onTrustRequest(const dht::InfoHash& peer_account,
                 accept = true;
             if (not contact->second.confirmed) {
                 contact->second.confirmed = true;
+                contact->second.trustState = TrustState::TRUSTED;
                 saveContacts();
                 callbacks_.contactAdded(peer_account.toString(), true);
             }
@@ -442,6 +493,128 @@ ContactList::discardTrustRequest(const dht::InfoHash& from)
         return true;
     }
     return false;
+}
+
+/* Pure trust operations for sequential trust-conversation flow */
+
+bool
+ContactList::onPureTrustRequest(const dht::InfoHash& peer_account,
+                                const std::shared_ptr<dht::crypto::PublicKey>& peer_device,
+                                time_t received,
+                                bool confirm,
+                                std::vector<uint8_t>&& payload)
+{
+    bool accept = false;
+    std::unique_lock lk(mutex_);
+    auto contact = contacts_.find(peer_account);
+    bool active = false;
+
+    if (contact != contacts_.end()) {
+        // Banned contact: discard request
+        if (contact->second.isBanned()) {
+            JAMI_LOG("[Account {}] [Contacts] Pure trust request from banned contact: {}", accountId_, peer_account);
+            return false;
+        }
+
+        if (contact->second.isActive()) {
+            active = true;
+            // Already active contact
+            if (not confirm)
+                accept = true;
+            if (not contact->second.confirmed) {
+                contact->second.confirmed = true;
+                contact->second.trustState = TrustState::TRUSTED;
+                saveContacts();
+                lk.unlock();
+                callbacks_.contactAdded(peer_account.toString(), true);
+                if (callbacks_.trustStateChanged)
+                    callbacks_.trustStateChanged(peer_account.toString(), TrustState::TRUSTED);
+                return accept;
+            }
+        }
+    }
+
+    if (not active) {
+        auto req = trustRequests_.find(peer_account);
+        if (req == trustRequests_.end()) {
+            // Add trust request with empty conversationId (pure trust)
+            req = trustRequests_.emplace(peer_account, TrustRequest {peer_device, "", received, payload}).first;
+            JAMI_LOG("[Account {}] [Contacts] New pure trust request from: {}", accountId_, peer_account);
+        } else {
+            // Update trust request
+            if (received > req->second.received) {
+                req->second.device = peer_device;
+                req->second.conversationId = ""; // Ensure it's pure trust
+                req->second.received = received;
+                req->second.payload = payload;
+            } else {
+                JAMI_LOG("[Account {}] [Contacts] Ignoring outdated trust request from {}", accountId_, peer_account);
+            }
+        }
+        saveTrustRequests();
+    }
+    lk.unlock();
+
+    // Notify via pure trust callback (no conversation involved)
+    if (!confirm && callbacks_.pureTrustRequest)
+        callbacks_.pureTrustRequest(peer_account.toString(), std::move(payload), received);
+    else if (active && callbacks_.trustConfirmed)
+        callbacks_.trustConfirmed(peer_account.toString());
+
+    return accept;
+}
+
+bool
+ContactList::acceptPureTrustRequest(const dht::InfoHash& from)
+{
+    // Accept trust without creating conversation
+    std::unique_lock lk(mutex_);
+    auto i = trustRequests_.find(from);
+    if (i == trustRequests_.end()) {
+        JAMI_WARNING("[Account {}] [Contacts] No trust request found from: {}", accountId_, from);
+        return false;
+    }
+
+    // Clear trust request
+    trustRequests_.erase(i);
+    saveTrustRequests();
+    lk.unlock();
+
+    // Add contact with empty conversationId (trust only, no conversation yet)
+    addContact(from, true, "");
+
+    // Update trust state
+    setTrustState(from, TrustState::TRUSTED);
+
+    JAMI_LOG("[Account {}] [Contacts] Accepted pure trust request from: {}", accountId_, from);
+    return true;
+}
+
+void
+ContactList::setTrustState(const dht::InfoHash& peer, TrustState state)
+{
+    std::unique_lock lk(mutex_);
+    auto c = contacts_.find(peer);
+    if (c != contacts_.end()) {
+        if (c->second.trustState != state) {
+            c->second.trustState = state;
+            saveContacts();
+            auto uri = peer.toString();
+            lk.unlock();
+            if (callbacks_.trustStateChanged)
+                callbacks_.trustStateChanged(uri, state);
+        }
+    }
+}
+
+TrustState
+ContactList::getTrustState(const dht::InfoHash& peer) const
+{
+    std::lock_guard lk(mutex_);
+    auto c = contacts_.find(peer);
+    if (c != contacts_.end())
+        return c->second.trustState;
+    return TrustState::NONE;
 }
 
 void

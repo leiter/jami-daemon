@@ -42,6 +42,25 @@ AVFrameSideData* av_frame_new_side_data_from_buf(AVFrame* frame, enum AVFrameSid
 #endif
 }
 
+// FFmpeg 5.1+ uses ch_layout struct, older versions use channels/channel_layout
+#if LIBAVUTIL_VERSION_INT >= AV_VERSION_INT(57, 28, 100)
+// New FFmpeg 5.1+ channel layout API
+#define JAMI_LIBAV_HAS_NEW_CHANNEL_LAYOUT 1
+#define JAMI_LIBAV_NB_CHANNELS(obj) ((obj)->ch_layout.nb_channels)
+#define JAMI_LIBAV_SET_CHANNELS(obj, nb) av_channel_layout_default(&(obj)->ch_layout, (nb))
+#define JAMI_LIBAV_SET_CHANNEL_LAYOUT_FROM_MASK(obj, mask) av_channel_layout_from_mask(&(obj)->ch_layout, (mask))
+#define JAMI_LIBAV_CHANNEL_LAYOUT_MASK(obj) ((obj)->ch_layout.u.mask)
+#define JAMI_LIBAV_COPY_CHANNEL_LAYOUT(dst, src) av_channel_layout_copy(&(dst)->ch_layout, &(src)->ch_layout)
+#else
+// Legacy FFmpeg channel layout API
+#define JAMI_LIBAV_HAS_NEW_CHANNEL_LAYOUT 0
+#define JAMI_LIBAV_NB_CHANNELS(obj) ((obj)->channels)
+#define JAMI_LIBAV_SET_CHANNELS(obj, nb) do { (obj)->channels = (nb); (obj)->channel_layout = av_get_default_channel_layout(nb); } while(0)
+#define JAMI_LIBAV_SET_CHANNEL_LAYOUT_FROM_MASK(obj, mask) do { (obj)->channel_layout = (mask); (obj)->channels = av_get_channel_layout_nb_channels(mask); } while(0)
+#define JAMI_LIBAV_CHANNEL_LAYOUT_MASK(obj) ((obj)->channel_layout)
+#define JAMI_LIBAV_COPY_CHANNEL_LAYOUT(dst, src) do { (dst)->channel_layout = (src)->channel_layout; (dst)->channels = (src)->channels; } while(0)
+#endif
+
 #include "libav_utils.h"
 
 #endif // __LIBAV_DEPS_H__

@@ -455,6 +455,24 @@ struct LIBJAMI_PUBLIC ConfigurationSignal
         constexpr static const char* name = "ContactRemoved";
         using cb_type = void(const std::string& /*account_id*/, const std::string& /*uri*/, bool banned);
     };
+
+    // Pure trust signals for sequential trust-conversation flow
+    struct LIBJAMI_PUBLIC PureTrustRequestReceived
+    {
+        constexpr static const char* name = "PureTrustRequestReceived";
+        using cb_type = void(const std::string& /*account_id*/,
+                             const std::string& /*from*/,
+                             const std::vector<uint8_t>& /*payload*/,
+                             time_t /*received*/);
+    };
+    struct LIBJAMI_PUBLIC TrustStateChanged
+    {
+        constexpr static const char* name = "TrustStateChanged";
+        using cb_type = void(const std::string& /*account_id*/,
+                             const std::string& /*contact_uri*/,
+                             int /*trustState*/);  // 0=none, 1=pending, 2=requested, 3=trusted
+    };
+
     // struct LIBJAMI_PUBLIC ExportToPeer
     // {
     //     constexpr static const char* name = "ExportToPeer";

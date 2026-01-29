@@ -32,6 +32,14 @@
 
 namespace jami {
 
+/** Explicit trust state for sequential trust-conversation flow */
+enum class TrustState : uint8_t {
+    NONE = 0,      // No trust relationship
+    PENDING = 1,   // We sent trust request, waiting for response
+    REQUESTED = 2, // We received trust request, waiting for our decision
+    TRUSTED = 3    // Mutual trust established
+};
+
 struct Contact
 {
     /** Time of contact addition */
@@ -49,9 +57,17 @@ struct Contact
     /** Non empty if a swarm is linked */
     std::string conversationId {};
 
+    /** Trust state for this contact */
+    TrustState trustState {TrustState::NONE};
+
     /** True if the contact is an active contact (not banned nor removed) */
     bool isActive() const { return added > removed; }
     bool isBanned() const { return not isActive() and banned; }
+
+    /** Check if conversation is allowed with this contact (trusted or confirmed) */
+    bool canHaveConversation() const {
+        return confirmed || trustState == TrustState::TRUSTED;
+    }
 
     Contact() = default;
     Contact(const Json::Value& json)
@@ -61,6 +77,8 @@ struct Contact
         confirmed = json["confirmed"].asBool();
         banned = json["banned"].asBool();
         conversationId = json["conversationId"].asString();
+        if (json.isMember("trustState"))
+            trustState = static_cast<TrustState>(json["trustState"].asUInt());
     }
 
     /**
@@ -77,15 +95,20 @@ struct Contact
             banned = c.banned;
             conversationId = c.conversationId;
             confirmed = c.confirmed;
+            trustState = c.trustState;
         } else if (isActive() && added == c.added) {
             confirmed = confirmed or c.confirmed;
+            // Keep the higher trust state
+            if (static_cast<uint8_t>(c.trustState) > static_cast<uint8_t>(trustState))
+                trustState = c.trustState;
         }
         return hasDifferentState(copy);
     }
 
     bool hasDifferentState(const Contact& other) const
     {
-        return other.isActive() != isActive() or other.isBanned() != isBanned() or other.confirmed != confirmed;
+        return other.isActive() != isActive() or other.isBanned() != isBanned()
+               or other.confirmed != confirmed or other.trustState != trustState;
     }
 
     Json::Value toJson() const
@@ -100,6 +123,8 @@ struct Contact
         if (banned)
             json["banned"] = banned;
         json["conversationId"] = conversationId;
+        if (trustState != TrustState::NONE)
+            json["trustState"] = static_cast<uint8_t>(trustState);
         return json;
     }
 
@@ -107,7 +132,8 @@ struct Contact
     {
         std::map<std::string, std::string> result {{"added", std::to_string(added)},
                                                    {"removed", std::to_string(removed)},
-                                                   {"conversationId", conversationId}};
+                                                   {"conversationId", conversationId},
+                                                   {"trustState", std::to_string(static_cast<uint8_t>(trustState))}};
 
         if (isActive())
             result.emplace("confirmed", confirmed ? TRUE_STR : FALSE_STR);
@@ -117,7 +143,7 @@ struct Contact
         return result;
     }
 
-    MSGPACK_DEFINE_MAP(added, removed, confirmed, banned, conversationId)
+    MSGPACK_DEFINE_MAP(added, removed, confirmed, banned, conversationId, trustState)
 };
 
 struct TrustRequest
@@ -182,3 +208,6 @@ struct KnownDevice
 };
 
 } // namespace jami
+
+// Msgpack enum adaptor for TrustState
+MSGPACK_ADD_ENUM(jami::TrustState);

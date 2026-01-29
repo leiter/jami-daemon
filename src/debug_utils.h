@@ -178,7 +178,7 @@ public:
             throw std::runtime_error("Failed to allocate audio codec context");
 
         codec_ctx_->sample_fmt = (AVSampleFormat) frame->format;
-        codec_ctx_->ch_layout = frame->ch_layout;
+        JAMI_LIBAV_COPY_CHANNEL_LAYOUT(codec_ctx_, frame);
         codec_ctx_->sample_rate = frame->sample_rate;
         if (format_ctx_->oformat->flags & AVFMT_GLOBALHEADER)
             codec_ctx_->flags |= AV_CODEC_FLAG_GLOBAL_HEADER;

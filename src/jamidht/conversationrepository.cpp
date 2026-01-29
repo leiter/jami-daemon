@@ -2803,7 +2803,9 @@ ConversationRepository::cloneConversation(const std::shared_ptr<JamiAccount>& ac
                path);
     git_repository* rep = nullptr;
     git_clone_options opts = GIT_CLONE_OPTIONS_INIT;
+#if LIBGIT2_VER_MAJOR > 1 || (LIBGIT2_VER_MAJOR == 1 && LIBGIT2_VER_MINOR >= 4)
     opts.fetch_opts.follow_redirects = GIT_REMOTE_REDIRECT_NONE;
+#endif
     if (auto err = git_clone(&rep, url.c_str(), path.string().c_str(), &opts)) {
         if (const git_error* gerr = giterr_last())
             JAMI_ERROR("[Account {}] [Conversation {}] Error when retrieving remote conversation: {:s} {}",
@@ -3249,7 +3251,9 @@ ConversationRepository::fetch(const std::string& remoteDeviceId)
     git_remote* remote_ptr = nullptr;
     git_fetch_options fetch_opts;
     git_fetch_options_init(&fetch_opts, GIT_FETCH_OPTIONS_VERSION);
+#if LIBGIT2_VER_MAJOR > 1 || (LIBGIT2_VER_MAJOR == 1 && LIBGIT2_VER_MINOR >= 4)
     fetch_opts.follow_redirects = GIT_REMOTE_REDIRECT_NONE;
+#endif
 
     LogOptions options;
     options.nbOfCommits = 1;

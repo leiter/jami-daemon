@@ -1207,6 +1207,35 @@ JamiAccount::loadAccount(const std::string& archive_password_scheme,
                     }*/
                 }
             });
+        },
+        // Pure trust request callback (new flow: trust without conversation)
+        [this](const std::string& uri, const std::vector<uint8_t>& payload, time_t received) {
+            if (!id_.first)
+                return;
+            dht::ThreadPool::io().run([w = weak(), uri, payload, received] {
+                if (auto shared = w.lock()) {
+                    shared->clearProfileCache(uri);
+                    emitSignal<libjami::ConfigurationSignal::PureTrustRequestReceived>(
+                        shared->getAccountID(), uri, payload, received);
+                }
+            });
+        },
+        // Trust confirmed callback
+        [this](const std::string& uri) {
+            if (!id_.first)
+                return;
+            JAMI_LOG("[Account {:s}] Trust confirmed with {}", getAccountID(), uri);
+        },
+        // Trust state changed callback
+        [this](const std::string& uri, TrustState state) {
+            if (!id_.first)
+                return;
+            dht::ThreadPool::io().run([w = weak(), uri, state] {
+                if (auto shared = w.lock()) {
+                    emitSignal<libjami::ConfigurationSignal::TrustStateChanged>(
+                        shared->getAccountID(), uri, static_cast<int>(state));
+                }
+            });
         }};
 
     const auto& conf = config();

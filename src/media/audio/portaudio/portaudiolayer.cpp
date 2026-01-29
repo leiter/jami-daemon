@@ -801,7 +801,7 @@ PortAudioLayer::PortAudioLayerImpl::paOutputCallback(PortAudioLayer& parent,
     }
 
     auto numSamples = toPlay->pointer()->nb_samples;
-    auto channels = std::min<size_t>(parent.audioFormat_.nb_channels, toPlay->pointer()->ch_layout.nb_channels);
+    auto channels = std::min<size_t>(parent.audioFormat_.nb_channels, JAMI_LIBAV_NB_CHANNELS(toPlay->pointer()));
     float** outputChannels = (float**) outputBuffer;
     for (size_t i = 0; i < channels; ++i) {
         std::copy_n((float*) toPlay->pointer()->extended_data[i], numSamples, outputChannels[i]);

@@ -92,7 +92,7 @@ DTMFGenerator::getSamples(AVFrame* frame, unsigned char code)
                     0,
                     state.offset,
                     frame->nb_samples,
-                    frame->ch_layout.nb_channels,
+                    JAMI_LIBAV_NB_CHANNELS(frame),
                     (AVSampleFormat) frame->format);
     state.offset = frame->nb_samples % sampleRate_;
 }
@@ -112,7 +112,7 @@ DTMFGenerator::getNextSamples(AVFrame* frame)
                     0,
                     state.offset,
                     frame->nb_samples,
-                    frame->ch_layout.nb_channels,
+                    JAMI_LIBAV_NB_CHANNELS(frame),
                     (AVSampleFormat) frame->format);
     state.offset = (state.offset + frame->nb_samples) % sampleRate_;
 }
@@ -125,8 +125,7 @@ DTMFGenerator::fillToneBuffer(int index)
     ptr->nb_samples = sampleRate_;
     ptr->format = tone_.getFormat().sampleFormat;
     ptr->sample_rate = sampleRate_;
-    ptr->channel_layout = AV_CH_LAYOUT_MONO;
-    av_channel_layout_from_mask(&ptr->ch_layout, AV_CH_LAYOUT_MONO);
+    JAMI_LIBAV_SET_CHANNEL_LAYOUT_FROM_MASK(ptr.get(), AV_CH_LAYOUT_MONO);
     av_frame_get_buffer(ptr.get(), 0);
     tone_.genSin(ptr.get(), 0, ptr->nb_samples, tones_[index].higher, tones_[index].lower);
     return ptr;
