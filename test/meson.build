@@ -515,6 +515,21 @@ test(
     timeout: 1800,
 )
 
+ut_message_loss = executable(
+    'ut_message_loss',
+    sources: files('unitTest/messageLoss/messageLoss.cpp'),
+    include_directories: ut_includedirs,
+    dependencies: ut_dependencies,
+    link_with: ut_library,
+)
+test(
+    'message_loss',
+    ut_message_loss,
+    workdir: ut_workdir,
+    is_parallel: false,
+    timeout: 3600,  # Longer timeout for retry exhaustion tests
+)
+
 ut_utf8_utils = executable(
     'ut_utf8_utils',
     sources: files('unitTest/utf8_utils/testUtf8_utils.cpp'),

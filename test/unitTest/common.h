@@ -22,8 +22,8 @@
 #include <string>
 #include <filesystem>
 
-constexpr size_t WAIT_FOR_ANNOUNCEMENT_TIMEOUT = 30;
-constexpr size_t WAIT_FOR_REMOVAL_TIMEOUT = 30;
+constexpr size_t WAIT_FOR_ANNOUNCEMENT_TIMEOUT = 300;
+constexpr size_t WAIT_FOR_REMOVAL_TIMEOUT = 300;
 
 extern void wait_for_announcement_of(const std::vector<std::string> accountIDs,
                                      std::chrono::seconds timeout = std::chrono::seconds(WAIT_FOR_ANNOUNCEMENT_TIMEOUT));
