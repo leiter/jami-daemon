@@ -505,7 +505,7 @@ AccountManager::removeContact(const std::string& uri, bool banned)
 {
     dht::InfoHash h(uri);
     if (not h) {
-        JAMI_ERROR("[Account {}] removeContact: invalid contact URI", accountId_);
+        JAMI_ERROR("[Account {}] removeContact: invalid contact URI: {}", accountId_, uri);
         return;
     }
     if (not info_) {
@@ -521,7 +521,7 @@ AccountManager::removeContactConversation(const std::string& uri)
 {
     dht::InfoHash h(uri);
     if (not h) {
-        JAMI_ERROR("[Account {}] removeContactConversation: invalid contact URI", accountId_);
+        JAMI_ERROR("[Account {}] removeContactConversation: invalid contact URI: {}", accountId_, uri);
         return;
     }
     if (not info_) {
@@ -537,7 +537,7 @@ AccountManager::updateContactConversation(const std::string& uri, const std::str
 {
     dht::InfoHash h(uri);
     if (not h) {
-        JAMI_ERROR("[Account {}] updateContactConversation: invalid contact URI", accountId_);
+        JAMI_ERROR("[Account {}] updateContactConversation: invalid contact URI: {}", accountId_, uri);
         return;
     }
     if (not info_) {
@@ -582,7 +582,7 @@ AccountManager::getContactDetails(const std::string& uri) const
     }
     dht::InfoHash h(uri);
     if (not h) {
-        JAMI_ERROR("[Account {}] getContactDetails: invalid contact URI", accountId_);
+        JAMI_ERROR("[Account {}] getContactDetails: invalid contact URI: {}", accountId_, uri);
         return {};
     }
     return info_->contacts->getContactDetails(h);
@@ -597,7 +597,7 @@ AccountManager::getContactInfo(const std::string& uri) const
     }
     dht::InfoHash h(uri);
     if (not h) {
-        JAMI_ERROR("[Account {}] getContactInfo: invalid contact URI", accountId_);
+        JAMI_ERROR("[Account {}] getContactInfo: invalid contact URI: {}", accountId_, uri);
         return {};
     }
     return info_->contacts->getContactInfo(h);
@@ -732,7 +732,7 @@ AccountManager::sendTrustRequest(const std::string& to, const std::string& convI
                      dev->getLongId(),
                      payload.size(),
                      to);
-        dht_->putEncrypted(dht::InfoHash::get("inbox:" + dev->getId().toString()),
+        dht_->putEncrypted(dht::InfoHash::get(concat("inbox:"sv, dev->getId().to_view())),
                            dev,
                            dht::TrustRequest(DHT_TYPE_NS, convId, payload),
                            [to, size = payload.size()](bool ok) {

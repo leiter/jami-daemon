@@ -113,8 +113,8 @@ test(
 ut_conversation = executable(
     'ut_conversation',
     sources: files(
-        'unitTest/conversation/conversation.cpp'
-        'unitTest/conversation/conversationcommon.cpp',,
+        'unitTest/conversation/conversation.cpp',
+        'unitTest/conversation/conversationcommon.cpp',
     ),
     include_directories: ut_includedirs,
     dependencies: ut_dependencies,
@@ -131,8 +131,8 @@ test(
 ut_conversation_call = executable(
     'ut_conversation_call',
     sources: files(
-        'unitTest/conversation/call.cpp'
-        'unitTest/conversation/conversationcommon.cpp',,
+        'unitTest/conversation/call.cpp',
+        'unitTest/conversation/conversationcommon.cpp',
     ),
     include_directories: ut_includedirs,
     dependencies: ut_dependencies,
@@ -149,8 +149,8 @@ test(
 ut_conversation_fetch_sent = executable(
     'ut_conversation_fetch_sent',
     sources: files(
-        'unitTest/conversation/conversationFetchSent.cpp'
-        'unitTest/conversation/conversationcommon.cpp',,
+        'unitTest/conversation/conversationFetchSent.cpp',
+        'unitTest/conversation/conversationcommon.cpp',
     ),
     include_directories: ut_includedirs,
     dependencies: ut_dependencies,
@@ -422,21 +422,6 @@ test(
     timeout: 1800,
 )
 
-ut_scheduler = executable(
-    'ut_scheduler',
-    sources: files('unitTest/scheduler.cpp'),
-    include_directories: ut_includedirs,
-    dependencies: ut_dependencies,
-    link_with: ut_library,
-)
-test(
-    'scheduler',
-    ut_scheduler,
-    workdir: ut_workdir,
-    is_parallel: false,
-    timeout: 1800,
-)
-
 ut_sip_basic_calls = executable(
     'ut_sip_basic_calls',
     sources: files('unitTest/sip_account/sip_basic_calls.cpp'),
@@ -470,8 +455,8 @@ test(
 ut_typers = executable(
     'ut_typers',
     sources: files(
-        'unitTest/conversation/conversationcommon.cpp'
-        'unitTest/conversation/typers.cpp',,
+        'unitTest/conversation/conversationcommon.cpp',
+        'unitTest/conversation/typers.cpp',
     ),
     include_directories: ut_includedirs,
     dependencies: ut_dependencies,
@@ -528,6 +513,21 @@ test(
     workdir: ut_workdir,
     is_parallel: false,
     timeout: 1800,
+)
+
+ut_message_loss = executable(
+    'ut_message_loss',
+    sources: files('unitTest/messageLoss/messageLoss.cpp'),
+    include_directories: ut_includedirs,
+    dependencies: ut_dependencies,
+    link_with: ut_library,
+)
+test(
+    'message_loss',
+    ut_message_loss,
+    workdir: ut_workdir,
+    is_parallel: false,
+    timeout: 3600,  # Longer timeout for retry exhaustion tests
 )
 
 ut_utf8_utils = executable(

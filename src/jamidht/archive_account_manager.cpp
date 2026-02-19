@@ -25,7 +25,7 @@
 #include "jamidht/conversation_module.h"
 #include "manager.h"
 #include "jamidht/auth_channel_handler.h"
-#include "client/ring_signal.h"
+#include "client/jami_signal.h"
 
 #include <dhtnet/multiplexed_socket.h>
 #include <dhtnet/channel_utils.h>
@@ -1221,7 +1221,7 @@ ArchiveAccountManager::onArchiveLoaded(AuthContext& ctx, AccountArchive&& a, boo
     }
 
     auto receipt = makeReceipt(a.id, *deviceCertificate, ethAccount);
-    auto receiptSignature = a.id.first->sign({receipt.first.begin(), receipt.first.end()});
+    auto receiptSignature = a.id.first->sign(receipt.first);
 
     auto info = std::make_unique<AccountInfo>();
     auto pk = usePreviousIdentity ? ctx.credentials->updateIdentity.first : ctx.key.get();
@@ -1323,28 +1323,6 @@ ArchiveAccountManager::syncDevices()
 {
     JAMI_LOG("[Account {}] Building device sync from {}", accountId_, info_->deviceId);
     onSyncData_(info_->contacts->getSyncData());
-}
-
-void
-ArchiveAccountManager::startSync(const OnNewDeviceCb& cb, const OnDeviceAnnouncedCb& dcb, bool publishPresence)
-{
-    AccountManager::startSync(std::move(cb), std::move(dcb), publishPresence);
-
-    dht_->listen<DeviceSync>(dht::InfoHash::get("inbox:" + info_->devicePk->getId().toString()), [this](DeviceSync&& sync) {
-        // Received device sync data.
-        // check device certificate
-        findCertificate(sync.from, [this, sync](const std::shared_ptr<dht::crypto::Certificate>& cert) mutable {
-            if (!cert or cert->getId() != sync.from) {
-                JAMI_WARNING("[Account {}] Unable to find certificate for device {}", accountId_, sync.from.toString());
-                return;
-            }
-            if (not foundAccountDevice(cert))
-                return;
-            onSyncData(std::move(sync));
-        });
-
-        return true;
-    });
 }
 
 AccountArchive

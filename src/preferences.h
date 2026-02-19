@@ -19,11 +19,12 @@
 #define __PREFERENCE_H__
 
 #include "config/serializable.h"
-#include "client/ring_signal.h"
+#include "client/jami_signal.h"
 #include <string>
 #include <map>
 #include <set>
 #include <vector>
+#include <chrono>
 
 namespace YAML {
 class Emitter;
@@ -63,9 +64,9 @@ public:
 
     void setHistoryLimit(int lim) { historyLimit_ = lim; }
 
-    int getRingingTimeout() const { return ringingTimeout_; }
+    std::chrono::seconds getRingingTimeout() const { return std::chrono::seconds(ringingTimeout_); }
 
-    void setRingingTimeout(int timeout) { ringingTimeout_ = timeout; }
+    void setRingingTimeout(std::chrono::seconds timeout) { ringingTimeout_ = timeout.count(); }
 
     int getHistoryMaxCalls() const { return historyMaxCalls_; }
 

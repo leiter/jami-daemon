@@ -33,7 +33,7 @@
 #include "jami/account_const.h"
 #include "jami/call_const.h"
 #include "jami/media_const.h"
-#include "client/ring_signal.h"
+#include "client/jami_signal.h"
 #include "pjsip-ua/sip_inv.h"
 
 #ifdef ENABLE_PLUGIN
@@ -220,15 +220,9 @@ SIPCall::configureRtpSession(const std::shared_ptr<RtpSession>& rtpSession,
     rtpSession->updateMedia(remoteMedia, localMedia);
 
     // Mute/un-mute media
-    if (mediaAttr->muted_) {
-        rtpSession->setMuted(true);
-        // TODO. Setting mute to true should be enough to mute.
-        // Kept for backward compatiblity.
-        rtpSession->setMediaSource("");
-    } else {
-        rtpSession->setMuted(false);
-        rtpSession->setMediaSource(mediaAttr->sourceUri_);
-    }
+    rtpSession->setMuted(mediaAttr->muted_);
+
+    rtpSession->setMediaSource(mediaAttr->sourceUri_);
 
     rtpSession->setSuccessfulSetupCb([w = weak()](MediaType, bool) {
         // This sends SIP messages on socket, so move to io
@@ -485,7 +479,7 @@ SIPCall::setSipTransport(const std::shared_ptr<SipTransport>& transport, const s
                                  this_->getCallId());
                     this_->stopAllMedia();
                     this_->detachAudioFromConference();
-                    this_->onFailure(ECONNRESET);
+                    this_->onFailure(PJSIP_SC_SERVICE_UNAVAILABLE);
                 }
             }
         });
@@ -992,7 +986,7 @@ SIPCall::answerMediaChangeRequest(const std::vector<libjami::MediaMap>& mediaLis
 }
 
 void
-SIPCall::hangup(int reason)
+SIPCall::hangup(int code)
 {
     std::lock_guard lk {callMutex_};
     pendingRecord_ = false;
@@ -1009,8 +1003,8 @@ SIPCall::hangup(int reason)
         }
 
         int status = PJSIP_SC_OK;
-        if (reason)
-            status = reason;
+        if (code)
+            status = code;
         else if (inviteSession_->state <= PJSIP_INV_STATE_EARLY and inviteSession_->role != PJSIP_ROLE_UAC)
             status = PJSIP_SC_CALL_TSX_DOES_NOT_EXIST;
         else if (inviteSession_->state >= PJSIP_INV_STATE_DISCONNECTED)
@@ -1023,10 +1017,10 @@ SIPCall::hangup(int reason)
     // Stop all RTP streams
     stopAllMedia();
     detachAudioFromConference();
-    setState(Call::ConnectionState::DISCONNECTED, reason);
-    dht::ThreadPool::io().run([w = weak()] {
+    setState(Call::ConnectionState::DISCONNECTED, code);
+    dht::ThreadPool::io().run([w = weak(), code] {
         if (auto shared = w.lock())
-            shared->removeCall();
+            shared->removeCall(code);
     });
 }
 
@@ -1055,7 +1049,7 @@ SIPCall::refuse()
     // Notify the peer
     terminateSipSession(PJSIP_SC_DECLINE);
 
-    setState(Call::ConnectionState::DISCONNECTED, ECONNABORTED);
+    setState(Call::ConnectionState::DISCONNECTED, PJSIP_SC_DECLINE);
     removeCall();
 }
 
@@ -1471,7 +1465,7 @@ SIPCall::sendTextMessage(const std::map<std::string, std::string>& messages, con
 }
 
 void
-SIPCall::removeCall()
+SIPCall::removeCall(int code)
 {
 #ifdef ENABLE_PLUGIN
     jami::Manager::instance().getJamiPluginManager().getCallServicesManager().clearCallHandlerMaps(getCallId());
@@ -1482,7 +1476,7 @@ SIPCall::removeCall()
         sdp_->setActiveLocalSdpSession(nullptr);
         sdp_->setActiveRemoteSdpSession(nullptr);
     }
-    Call::removeCall();
+    Call::removeCall(code);
 
     {
         std::lock_guard lk(transportMtx_);
@@ -1495,14 +1489,14 @@ SIPCall::removeCall()
 }
 
 void
-SIPCall::onFailure(signed cause)
+SIPCall::onFailure(int code)
 {
-    if (setState(CallState::MERROR, ConnectionState::DISCONNECTED, cause)) {
-        runOnMainThread([w = weak()] {
+    if (setState(CallState::MERROR, ConnectionState::DISCONNECTED, code)) {
+        runOnMainThread([w = weak(), code] {
             if (auto shared = w.lock()) {
                 auto& call = *shared;
                 Manager::instance().callFailure(call);
-                call.removeCall();
+                call.removeCall(code);
             }
         });
     }
@@ -2311,15 +2305,27 @@ SIPCall::updateAllMediaStreams(const std::vector<MediaAttribute>& mediaAttrList,
         }
     }
 
+    // If the new media list is smaller than the number of existing streams, that means some streams have been removed
+    // We need to clean them up
     if (mediaAttrList.size() < rtpStreams_.size()) {
 #ifdef ENABLE_VIDEO
-        // If new media stream list got more media streams than current size, we can remove old media streams from conference
         for (auto i = mediaAttrList.size(); i < rtpStreams_.size(); ++i) {
+            // Clean up video streams that are absent from the new media list
             auto& stream = rtpStreams_[i];
             if (stream.rtpSession_->getMediaType() == MediaType::MEDIA_VIDEO)
                 std::static_pointer_cast<video::VideoRtpSession>(stream.rtpSession_)->exitConference();
         }
 #endif
+        for (auto i = mediaAttrList.size(); i < rtpStreams_.size(); ++i) {
+            // Clean up audio streams that are absent from the new media list
+            auto& stream = rtpStreams_[i];
+            if (stream.rtpSession_->getMediaType() == MediaType::MEDIA_AUDIO) {
+                JAMI_WARNING("[call:{}] Audio stream {} absent from new media list, stopping RTP session",
+                             getCallId(),
+                             stream.rtpSession_->streamId());
+                std::static_pointer_cast<AudioRtpSession>(stream.rtpSession_)->stop();
+            }
+        }
         rtpStreams_.resize(mediaAttrList.size());
     }
     return true;
@@ -2643,7 +2649,7 @@ SIPCall::startIceMedia()
     auto iceMedia = getIceMedia();
     if (not iceMedia or iceMedia->isFailed()) {
         JAMI_ERROR("[call:{}] Media ICE init failed", getCallId());
-        onFailure(EIO);
+        onFailure(PJSIP_SC_INTERNAL_SERVER_ERROR);
         return;
     }
 
@@ -2666,12 +2672,12 @@ SIPCall::startIceMedia()
     auto rem_ice_attrs = sdp_->getIceAttributes();
     if (rem_ice_attrs.ufrag.empty() or rem_ice_attrs.pwd.empty()) {
         JAMI_ERROR("[call:{}] Missing remote media ICE attributes", getCallId());
-        onFailure(EIO);
+        onFailure(PJSIP_SC_NOT_ACCEPTABLE_HERE);
         return;
     }
     if (not iceMedia->startIce(rem_ice_attrs, getAllRemoteCandidates(*iceMedia))) {
         JAMI_ERROR("[call:{}] ICE media failed to start", getCallId());
-        onFailure(EIO);
+        onFailure(PJSIP_SC_NOT_ACCEPTABLE_HERE);
     }
 }
 
@@ -3339,7 +3345,7 @@ SIPCall::initIceMediaTransport(bool master, std::optional<dhtnet::IceTransportOp
                 call = call->isSubcall() ? std::dynamic_pointer_cast<SIPCall>(call->parent_) : call;
                 if (!ok) {
                     JAMI_ERROR("[call:{}] Media ICE negotiation failed", call->getCallId());
-                    call->onFailure(EIO);
+                    call->onFailure(PJSIP_SC_NOT_ACCEPTABLE_HERE);
                     return;
                 }
                 call->onIceNegoSucceed();
@@ -3493,7 +3499,7 @@ SIPCall::setupIceResponse(bool isReinvite)
 
     if (not opt.accountLocalAddr) {
         JAMI_ERROR("[call:{}] No local address, unable to initialize ICE", getCallId());
-        onFailure(EIO);
+        onFailure(PJSIP_SC_SERVICE_UNAVAILABLE);
         return;
     }
 
@@ -3502,7 +3508,7 @@ SIPCall::setupIceResponse(bool isReinvite)
         // Fatal condition
         // TODO: what's SIP rfc says about that?
         // (same question in startIceMedia)
-        onFailure(EIO);
+        onFailure(PJSIP_SC_INTERNAL_SERVER_ERROR);
         return;
     }
 

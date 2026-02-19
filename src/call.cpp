@@ -25,7 +25,7 @@
 #endif
 #include "audio/ringbufferpool.h"
 #include "jami/call_const.h"
-#include "client/ring_signal.h"
+#include "client/jami_signal.h"
 #include "connectivity/sip_utils.h"
 #include "call_factory.h"
 #include "string_utils.h"
@@ -80,31 +80,30 @@ Call::Call(const std::shared_ptr<Account>& account,
     : id_(id)
     , type_(type)
     , account_(account)
+    , timeoutTimer_(*Manager::instance().ioContext())
 {
     addStateListener([this](Call::CallState call_state, Call::ConnectionState cnx_state, int code) {
         checkPendingIM();
-        runOnMainThread([callWkPtr = weak()] {
+        runOnMainThread([callWkPtr = weak_from_this()] {
             if (auto call = callWkPtr.lock())
                 call->checkAudio();
         });
 
         // if call just started ringing, schedule call timeout
         if (type_ == CallType::INCOMING and cnx_state == ConnectionState::RINGING) {
-            auto timeout = Manager::instance().getRingingTimeout();
-            JAMI_DBG("Scheduling call timeout in %d seconds", timeout);
-
-            Manager::instance().scheduler().scheduleIn(
-                [callWkPtr = weak()] {
-                    if (auto callShPtr = callWkPtr.lock()) {
-                        if (callShPtr->getConnectionState() == Call::ConnectionState::RINGING) {
-                            JAMI_DBG("Call %s is still ringing after timeout, setting state to BUSY",
-                                     callShPtr->getCallId().c_str());
-                            callShPtr->hangup(PJSIP_SC_BUSY_HERE);
-                            Manager::instance().callFailure(*callShPtr);
-                        }
+            timeoutTimer_.expires_after(Manager::instance().getRingingTimeout());
+            timeoutTimer_.async_wait([callWkPtr = weak_from_this()](const std::error_code& ec) {
+                if (ec == asio::error::operation_aborted)
+                    return;
+                if (auto callShPtr = callWkPtr.lock()) {
+                    if (callShPtr->getConnectionState() == Call::ConnectionState::RINGING) {
+                        JAMI_LOG("Call {} is still ringing after timeout, setting state to BUSY",
+                                 callShPtr->getCallId());
+                        callShPtr->hangup(PJSIP_SC_BUSY_HERE);
+                        Manager::instance().callFailure(*callShPtr);
                     }
-                },
-                std::chrono::seconds(timeout));
+                }
+            });
         }
 
         if (!isSubcall()) {
@@ -137,11 +136,11 @@ Call::Call(const std::shared_ptr<Account>& account,
 Call::~Call() {}
 
 void
-Call::removeCall()
+Call::removeCall(int code)
 {
     auto this_ = shared_from_this();
     Manager::instance().callFactory.removeCall(*this);
-    setState(CallState::OVER);
+    setState(CallState::OVER, code);
     if (Recordable::isRecording())
         Recordable::stopRecording();
     if (auto account = account_.lock())
@@ -359,17 +358,17 @@ Call::getDetails() const
 {
     auto conference = conf_.lock();
     return {
-        {libjami::Call::Details::CALL_TYPE,       std::to_string((unsigned) type_)                                      },
-        {libjami::Call::Details::PEER_NUMBER,     peerNumber_                                                           },
-        {libjami::Call::Details::DISPLAY_NAME,    peerDisplayName_                                                      },
-        {libjami::Call::Details::CALL_STATE,      getStateStr()                                                         },
-        {libjami::Call::Details::CONF_ID,         conference ? conference->getConfId() : ""                             },
-        {libjami::Call::Details::TIMESTAMP_START, std::to_string(timestamp_start_)                                      },
-        {libjami::Call::Details::ACCOUNTID,       getAccountId()                                                        },
-        {libjami::Call::Details::TO_USERNAME,     toUsername()                                                          },
-        {libjami::Call::Details::AUDIO_MUTED,     std::string(bool_to_str(isCaptureDeviceMuted(MediaType::MEDIA_AUDIO)))},
-        {libjami::Call::Details::VIDEO_MUTED,     std::string(bool_to_str(isCaptureDeviceMuted(MediaType::MEDIA_VIDEO)))},
-        {libjami::Call::Details::AUDIO_ONLY,      std::string(bool_to_str(not hasVideo()))                              },
+        {libjami::Call::Details::CALL_TYPE, std::to_string((unsigned) type_)},
+        {libjami::Call::Details::PEER_NUMBER, peerNumber_},
+        {libjami::Call::Details::DISPLAY_NAME, peerDisplayName_},
+        {libjami::Call::Details::CALL_STATE, getStateStr()},
+        {libjami::Call::Details::CONF_ID, conference ? conference->getConfId() : ""},
+        {libjami::Call::Details::TIMESTAMP_START, std::to_string(timestamp_start_)},
+        {libjami::Call::Details::ACCOUNTID, getAccountId()},
+        {libjami::Call::Details::TO_USERNAME, toUsername()},
+        {libjami::Call::Details::AUDIO_MUTED, std::string(bool_to_str(isCaptureDeviceMuted(MediaType::MEDIA_AUDIO)))},
+        {libjami::Call::Details::VIDEO_MUTED, std::string(bool_to_str(isCaptureDeviceMuted(MediaType::MEDIA_VIDEO)))},
+        {libjami::Call::Details::AUDIO_ONLY, std::string(bool_to_str(not hasVideo()))},
     };
 }
 
@@ -411,7 +410,7 @@ Call::peerHungup()
 {
     const auto state = getState();
     const auto aborted = state == CallState::ACTIVE or state == CallState::HOLD;
-    setState(ConnectionState::DISCONNECTED, aborted ? ECONNABORTED : ECONNREFUSED);
+    setState(ConnectionState::DISCONNECTED, aborted ? PJSIP_SC_REQUEST_TERMINATED : PJSIP_SC_DECLINE);
 }
 
 void
@@ -439,18 +438,18 @@ Call::addSubCall(Call& subcall)
     for (const auto& msg : pendingOutMessages_)
         subcall.sendTextMessage(msg.first, msg.second);
 
-    subcall.addStateListener([sub = subcall.weak(), parent = weak()](Call::CallState new_state,
-                                                                     Call::ConnectionState new_cstate,
-                                                                     int /* code */) {
-        runOnMainThread([sub, parent, new_state, new_cstate]() {
-            if (auto p = parent.lock()) {
-                if (auto s = sub.lock()) {
-                    p->subcallStateChanged(*s, new_state, new_cstate);
+    subcall.addStateListener(
+        [sub = subcall.weak_from_this(),
+         parent = weak_from_this()](Call::CallState new_state, Call::ConnectionState new_cstate, int code) {
+            runOnMainThread([sub, parent, new_state, new_cstate, code]() {
+                if (auto p = parent.lock()) {
+                    if (auto s = sub.lock()) {
+                        p->subcallStateChanged(*s, new_state, new_cstate, code);
+                    }
                 }
-            }
+            });
+            return true;
         });
-        return true;
-    });
 }
 
 /// Called by a subcall when its states change (multidevice)
@@ -459,7 +458,7 @@ Call::addSubCall(Call& subcall)
 /// Parent call states are managed by these subcalls.
 /// \note this method may decrease the given \a subcall ref count.
 void
-Call::subcallStateChanged(Call& subcall, Call::CallState new_state, Call::ConnectionState new_cstate)
+Call::subcallStateChanged(Call& subcall, Call::CallState new_state, Call::ConnectionState new_cstate, int code)
 {
     {
         // This condition happens when a subcall hangups/fails after removed from parent's list.
@@ -505,21 +504,16 @@ Call::subcallStateChanged(Call& subcall, Call::CallState new_state, Call::Connec
         // Parent call fails if last subcall is busy or failed
         if (subcalls_.empty()) {
             if (new_state == CallState::BUSY) {
-                setState(CallState::BUSY,
-                         ConnectionState::DISCONNECTED,
-                         static_cast<int>(std::errc::device_or_resource_busy));
+                setState(CallState::BUSY, ConnectionState::DISCONNECTED, PJSIP_SC_BUSY_HERE);
             } else if (new_state == CallState::PEER_BUSY) {
-                setState(CallState::PEER_BUSY,
-                         ConnectionState::DISCONNECTED,
-                         static_cast<int>(std::errc::device_or_resource_busy));
+                setState(CallState::PEER_BUSY, ConnectionState::DISCONNECTED, PJSIP_SC_BUSY_EVERYWHERE);
             } else {
-                // XXX: first idea was to use std::errc::host_unreachable, but it's not available on
-                // some platforms like mingw.
-                setState(CallState::MERROR, ConnectionState::DISCONNECTED, static_cast<int>(std::errc::io_error));
+                // Subcall failed with a non-busy state so we send a generic server error
+                setState(CallState::MERROR, ConnectionState::DISCONNECTED, PJSIP_SC_INTERNAL_SERVER_ERROR);
             }
-            removeCall();
+            removeCall(code);
         } else {
-            JAMI_DBG("[call:%s] remains %zu subcall(s)", getCallId().c_str(), subcalls_.size());
+            JAMI_DEBUG("[call:{}] Subcalls remaining : {}", getCallId(), subcalls_.size());
         }
 
         return;

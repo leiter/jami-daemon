@@ -59,8 +59,8 @@ B) With Meson
 
 ```bash
 cd contrib
-mkdir native
-cd native
+mkdir build
+cd build
 ../bootstrap
 make
 ```
@@ -111,8 +111,8 @@ export RANLIB=$TOOLCHAIN/bin/$TARGET-ranlib
 export STRIP=$TOOLCHAIN/bin/$TARGET-strip
 export PATH=$PATH:$TOOLCHAIN/bin
 cd contrib
-mkdir native
-cd native
+mkdir build
+cd build
 ../bootstrap --build=x86_64-pc-linux-gnu --host=$TARGET$ANDROID_API
 make
 ```
@@ -169,8 +169,8 @@ cmake --build . --config Release
 # Compile the dependencies
 ```bash
 cd contrib
-mkdir native
-cd native
+mkdir build
+cd build
 ../bootstrap
 make -j
 ```
@@ -226,7 +226,7 @@ https://lists.gnu.org/mailman/listinfo/jami
 COPYRIGHT NOTICE
 ----
 
-Copyright (C) 2004-2025 Savoir-faire Linux Inc.
+Copyright (C) 2004-2026 Savoir-faire Linux Inc.
 
 This program is free software: you can redistribute it and/or modify
 it under the terms of the GNU General Public License as published by

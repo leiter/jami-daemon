@@ -32,7 +32,7 @@
 #include "audio/audiolayer.h"
 #include "system_codec_container.h"
 #include "account_const.h"
-#include "client/ring_signal.h"
+#include "client/jami_signal.h"
 #include "audio/ringbufferpool.h"
 #include "connectivity/security/tlsvalidator.h"
 
@@ -98,7 +98,9 @@ validateCertificate(const std::string& accountId, const std::string& certificate
     } catch (const std::runtime_error& e) {
         JAMI_WARN("Certificate loading failed: %s", e.what());
     }
-    return {{Certificate::ChecksNames::EXIST, Certificate::CheckValuesNames::FAILED}};
+    return {
+        {Certificate::ChecksNames::EXIST, Certificate::CheckValuesNames::FAILED}
+    };
 }
 
 std::map<std::string, std::string>
@@ -113,7 +115,9 @@ validateCertificatePath(const std::string& accountId,
             return TlsValidator {acc->certStore(), certificate, privateKey, privateKeyPass, caList}.getSerializedChecks();
     } catch (const std::runtime_error& e) {
         JAMI_WARN("Certificate loading failed: %s", e.what());
-        return {{Certificate::ChecksNames::EXIST, Certificate::CheckValuesNames::FAILED}};
+        return {
+            {Certificate::ChecksNames::EXIST, Certificate::CheckValuesNames::FAILED}
+        };
     }
     return {};
 }
@@ -848,13 +852,13 @@ setHistoryLimit(int32_t days)
 int32_t
 getRingingTimeout()
 {
-    return jami::Manager::instance().getRingingTimeout();
+    return jami::Manager::instance().getRingingTimeout().count();
 }
 
 void
 setRingingTimeout(int32_t timeout)
 {
-    jami::Manager::instance().setRingingTimeout(timeout);
+    jami::Manager::instance().setRingingTimeout(std::chrono::seconds(timeout));
 }
 
 std::vector<std::string>

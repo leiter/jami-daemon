@@ -28,7 +28,7 @@
 #include "media_buffer.h"
 #include "logger.h"
 #include "noncopyable.h"
-#include "client/ring_signal.h"
+#include "client/jami_signal.h"
 #include "jami/videomanager_interface.h"
 #include "libav_utils.h"
 #include "video_scaler.h"
@@ -42,7 +42,7 @@
 #ifndef _WIN32
 #include <sys/mman.h>
 #endif
-#include <ciso646> // fix windows compiler bug
+
 #include <fcntl.h>
 #include <cstdio>
 #include <sstream>

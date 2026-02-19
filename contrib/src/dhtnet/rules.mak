@@ -1,5 +1,5 @@
 # DHTNET
-DHTNET_VERSION := d61f7946f3bb2dc10f3f0dca5e3f8e033fc5acba
+DHTNET_VERSION := cff03260fa037f59d6768bac26014b01c07b3fb9
 DHTNET_URL := https://git.jami.net/savoirfairelinux/dhtnet/-/archive/$(DHTNET_VERSION)/dhtnet-$(DHTNET_VERSION).tar.gz
 
 PKGS += dhtnet
@@ -9,8 +9,7 @@ ifndef HAVE_WIN32
 DEPS_dhtnet += natpmp
 endif
 
-
-DHTNET_CONF = -DBUILD_SHARED_LIBS=Off \
+DHTNET_CONF = -DCMAKE_CXX_STANDARD=20 \
 	-DBUILD_BENCHMARKS=Off \
 	-DBUILD_TOOLS=Off \
 	-DBUILD_TESTING=Off \
@@ -29,8 +28,4 @@ dhtnet: dhtnet-$(DHTNET_VERSION).tar.gz
 	$(UNPACK)
 	$(MOVE)
 
-.dhtnet: dhtnet toolchain.cmake .sum-dhtnet
-	cd $< && mkdir -p build
-	cd $< && cd build && $(HOSTVARS) $(CMAKE) $(DHTNET_CONF) ..
-	cd $< && cd build && $(MAKE) install
-	touch $@
+CMAKE_PKGS += dhtnet

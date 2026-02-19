@@ -4,7 +4,7 @@ project(jami-core
     VERSION 16.0.0
     LANGUAGES C CXX)
 set(PACKAGE_NAME "Jami Daemon")
-set (CMAKE_CXX_STANDARD 17)
+set (CMAKE_CXX_STANDARD 20)
 
 set(PROJECT_LABEL "libjami")
 
@@ -104,9 +104,27 @@ if(NOT MSVC)
     endif()
 endif()
 
+# Windows SDK selection for MSVC
+if (MSVC)
+    # Enforce minimum SDK 10.0.26100.0.
+    set(MIN_WIN_SDK "10.0.26100.0")
+
+    # Set minimum SDK version hint
+    set(CMAKE_SYSTEM_VERSION "${MIN_WIN_SDK}" CACHE STRING "" FORCE)
+
+    # After SDK selection, validate what CMake chose
+    if (DEFINED CMAKE_VS_WINDOWS_TARGET_PLATFORM_VERSION)
+        if (CMAKE_VS_WINDOWS_TARGET_PLATFORM_VERSION VERSION_LESS MIN_WIN_SDK)
+            message(FATAL_ERROR
+                "Windows SDK ${CMAKE_VS_WINDOWS_TARGET_PLATFORM_VERSION} is too old. "
+                "Minimum required: ${MIN_WIN_SDK}")
+        endif()
+    endif()
+endif()
+
 if (BUILD_CONTRIB)
     if (NOT MSVC)
-        set(CONTRIB_BUILD_PATH ${CMAKE_CURRENT_SOURCE_DIR}/contrib/native-${TARGET})
+        set(CONTRIB_BUILD_PATH ${CMAKE_CURRENT_SOURCE_DIR}/contrib/build-${TARGET})
         file(MAKE_DIRECTORY ${CONTRIB_BUILD_PATH})
         file(MAKE_DIRECTORY ${CONTRIB_PATH})
 
@@ -135,7 +153,7 @@ if (BUILD_CONTRIB)
             foreach(ARCH ${CMAKE_OSX_ARCHITECTURES})
                 message(STATUS "Building for architecture: ${ARCH}")
                 set(CC_TARGET ${ARCH}-apple-darwin${CMAKE_SYSTEM_VERSION})
-                set(CC_CONTRIB_BUILD_PATH ${CMAKE_CURRENT_SOURCE_DIR}/contrib/native-${CC_TARGET})
+                set(CC_CONTRIB_BUILD_PATH ${CMAKE_CURRENT_SOURCE_DIR}/contrib/build-${CC_TARGET})
                 set(CC_CONTRIB_PATH ${CMAKE_CURRENT_SOURCE_DIR}/contrib/${CC_TARGET})
                 file(MAKE_DIRECTORY ${CC_CONTRIB_BUILD_PATH})
                 file(MAKE_DIRECTORY ${CC_CONTRIB_PATH})
@@ -671,10 +689,10 @@ else()
     target_compile_options(${PROJECT_NAME} PRIVATE
         -fvisibility=hidden
         -Wall -Wextra
-        -Wnon-virtual-dtor
         -Wno-deprecated
         -Wno-deprecated-declarations
         -Wno-unknown-pragmas
+        $<$<COMPILE_LANGUAGE:CXX>:-Wnon-virtual-dtor>
     )
     target_compile_definitions(${PROJECT_NAME} PRIVATE
         JAMI_DATADIR="${JAMI_DATADIR}"
@@ -718,8 +736,8 @@ else()
 
     install (TARGETS ${PROJECT_NAME})
     install(
-        DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/src/
-        DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/jami
+        DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/src/jami
+        DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
         FILES_MATCHING PATTERN "*.h"
     )
 
@@ -818,12 +836,12 @@ else()
         target_compile_options(${PROJECT_NAME}-jni PRIVATE
             -fvisibility=hidden
             -Wall -Wextra
-            -Wnon-virtual-dtor
             -Wno-deprecated
             -Wno-deprecated-declarations
             -Wno-unknown-pragmas
             -Wno-unused-function
             -Wno-unused-parameter
+            $<$<COMPILE_LANGUAGE:CXX>:-Wnon-virtual-dtor>
         )
         target_link_options(${PROJECT_NAME}-jni PRIVATE
             -Wl,-Bsymbolic
@@ -928,10 +946,10 @@ else()
         target_compile_options(ut_library PUBLIC
             -fvisibility=hidden
             -Wall -Wextra
-            -Wnon-virtual-dtor
             -Wno-deprecated
             -Wno-deprecated-declarations
             -Wno-unknown-pragmas
+            $<$<COMPILE_LANGUAGE:CXX>:-Wnon-virtual-dtor>
         )
         target_compile_definitions(ut_library PUBLIC
             JAMI_DATADIR="${JAMI_DATADIR}"
@@ -985,7 +1003,6 @@ else()
         add_test_executable(namedirectory test/unitTest/namedirectory/namedirectory.cpp)
         target_link_libraries(ut_namedirectory PRIVATE restinio::restinio)
 
-        add_test_executable(scheduler test/unitTest/scheduler.cpp)
         add_test_executable(account_factory test/unitTest/account_factory/testAccount_factory.cpp)
         add_test_executable(call test/unitTest/call/call.cpp)
         add_test_executable(recorder test/unitTest/call/recorder.cpp)
@@ -1007,6 +1024,7 @@ else()
         add_test_executable(conversationRequest test/unitTest/conversation/conversationRequest.cpp test/unitTest/conversation/conversationcommon.cpp)
         add_test_executable(conversationMembersEvent test/unitTest/conversation/conversationMembersEvent.cpp test/unitTest/conversation/conversationcommon.cpp)
         add_test_executable(conversation_fetch_sent test/unitTest/conversation/conversationFetchSent.cpp test/unitTest/conversation/conversationcommon.cpp)
+        add_test_executable(message_loss test/unitTest/messageLoss/messageLoss.cpp)
         add_test_executable(media_encoder test/unitTest/media/test_media_encoder.cpp)
         add_test_executable(media_decoder test/unitTest/media/test_media_decoder.cpp)
         add_test_executable(resampler test/unitTest/media/audio/test_resampler.cpp)
@@ -1019,6 +1037,11 @@ else()
         if (JAMI_PLUGIN)
             add_test_executable(plugins test/unitTest/plugins/plugins.cpp)
         endif()
+
+        # Test account generator tool (not a test, but a utility)
+        # Links against ut_library to get all required dependencies
+        add_executable(create_test_accounts tools/create_test_accounts.cpp)
+        target_link_libraries(create_test_accounts PRIVATE ut_library)
     endif()
 
 endif()

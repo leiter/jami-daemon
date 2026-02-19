@@ -23,7 +23,7 @@
 #include "fileutils.h"
 #include "gittransport.h"
 #include "string_utils.h"
-#include "client/ring_signal.h"
+#include "client/jami_signal.h"
 #include "vcard.h"
 #include "json_utils.h"
 #include "fileutils.h"
@@ -2330,7 +2330,7 @@ ConversationRepository::Impl::forEachCommit(PreConditionCb&& preCondition,
     GitRevWalker walker {walker_ptr};
     git_revwalk_sorting(walker.get(), GIT_SORT_TOPOLOGICAL | GIT_SORT_TIME);
 
-    for (auto idx = 0u; !git_revwalk_next(&oid, walker.get()); ++idx) {
+    while (!git_revwalk_next(&oid, walker.get())) {
         git_commit* commit_ptr = nullptr;
         std::string id = git_oid_tostr_s(&oid);
         if (git_commit_lookup(&commit_ptr, repo.get(), &oid) < 0) {
@@ -2347,11 +2347,8 @@ ConversationRepository::Impl::forEachCommit(PreConditionCb&& preCondition,
         std::vector<std::string> parents;
         auto parentsCount = git_commit_parentcount(commit.get());
         for (unsigned int p = 0; p < parentsCount; ++p) {
-            std::string parent {};
-            const git_oid* pid = git_commit_parent_id(commit.get(), p);
-            if (pid) {
-                parent = git_oid_tostr_s(pid);
-                parents.emplace_back(parent);
+            if (const git_oid* pid = git_commit_parent_id(commit.get(), p)) {
+                parents.emplace_back(git_oid_tostr_s(pid));
             }
         }
 
@@ -3178,17 +3175,20 @@ ConversationRepository::addMember(const std::string& uri)
     if (!pimpl_->add(path))
         return {};
 
-    {
-        std::lock_guard lk(pimpl_->membersMtx_);
-        pimpl_->members_.emplace_back(ConversationMember {uri, MemberRole::INVITED});
-        pimpl_->saveMembers();
-    }
-
     Json::Value json;
     json["action"] = "add";
     json["uri"] = uri;
     json["type"] = "member";
-    return pimpl_->commit(json::toString(json));
+    auto commitId = pimpl_->commit(json::toString(json));
+    if (commitId.empty()) {
+        JAMI_ERROR("Unable to commit addition of member {}", uri);
+        return {};
+    }
+
+    std::lock_guard lk(pimpl_->membersMtx_);
+    pimpl_->members_.emplace_back(ConversationMember {uri, MemberRole::INVITED});
+    pimpl_->saveMembers();
+    return commitId;
 }
 
 void

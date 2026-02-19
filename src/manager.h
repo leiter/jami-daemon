@@ -24,9 +24,10 @@
 #include "call_factory.h"
 #include "preferences.h"
 #include "media/audio/audiolayer.h"
-#include "scheduled_executor.h"
 #include "gittransport.h"
+
 #include <dhtnet/certstore.h>
+#include <asio/post.hpp>
 
 #include <algorithm>
 #include <atomic>
@@ -144,6 +145,18 @@ public:
     inline std::unique_ptr<AudioDeviceGuard> startAudioStream(AudioDeviceType stream)
     {
         return std::make_unique<AudioDeviceGuard>(*this, stream);
+    }
+
+    /**
+     * Start a capture stream on the given device (eg. a window handle).
+     * If another stream is already using this device, increase its user count and return a guard.
+     * Otherwise, start a new capture stream on the device and return a guard.
+     * @param captureDevice The name of the capture device to use
+     * @return A guard that will stop the capture stream when destroyed
+     */
+    inline std::unique_ptr<AudioDeviceGuard> startCaptureStream(const std::string& captureDevice)
+    {
+        return std::make_unique<AudioDeviceGuard>(*this, captureDevice);
     }
 
     /**
@@ -598,14 +611,14 @@ public:
      * enter BUSY state if not answered).
      * @param timeout in seconds
      */
-    void setRingingTimeout(int timeout);
+    void setRingingTimeout(std::chrono::seconds timeout);
 
     /**
      * Get ringing timeout (number of seconds after which a call will
      * enter BUSY state if not answered).
      * @return timeout in seconds
      */
-    int getRingingTimeout() const;
+    std::chrono::seconds getRingingTimeout() const;
 
     /**
      * Get the audio manager
@@ -818,17 +831,6 @@ public:
     std::shared_ptr<asio::io_context> ioContext() const;
     std::shared_ptr<dhtnet::upnp::UPnPContext> upnpContext() const;
 
-    ScheduledExecutor& scheduler();
-    std::shared_ptr<Task> scheduleTask(std::function<void()>&& task,
-                                       std::chrono::steady_clock::time_point when,
-                                       const char* filename = CURRENT_FILENAME(),
-                                       uint32_t linum = CURRENT_LINE());
-
-    std::shared_ptr<Task> scheduleTaskIn(std::function<void()>&& task,
-                                         std::chrono::steady_clock::duration timeout,
-                                         const char* filename = CURRENT_FILENAME(),
-                                         uint32_t linum = CURRENT_LINE());
-
     std::map<std::string, std::string> getNearbyPeers(const std::string& accountID);
 
 #ifdef ENABLE_VIDEO
@@ -913,11 +915,13 @@ class AudioDeviceGuard
 {
 public:
     AudioDeviceGuard(Manager& manager, AudioDeviceType type);
+    AudioDeviceGuard(Manager& manager, const std::string& captureDevice);
     ~AudioDeviceGuard();
 
 private:
     Manager& manager_;
     const AudioDeviceType type_;
+    const std::string captureDevice_;
 };
 
 // Helper to install a callback to be called once by the main event loop
@@ -925,7 +929,13 @@ template<typename Callback>
 static void
 runOnMainThread(Callback&& cb)
 {
-    Manager::instance().scheduler().run([cb = std::forward<Callback>(cb)]() mutable { cb(); });
+    asio::post(*Manager::instance().ioContext(), [cb = std::forward<Callback>(cb)]() mutable {
+        try {
+            cb();
+        } catch (const std::exception& e) {
+            JAMI_ERROR("Exception running job: {}", e.what());
+        }
+    });
 }
 
 } // namespace jami

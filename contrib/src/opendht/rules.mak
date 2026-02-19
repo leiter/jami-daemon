@@ -1,5 +1,5 @@
 # OPENDHT
-OPENDHT_VERSION := 3.6.2
+OPENDHT_VERSION := 3.7.0rc8
 OPENDHT_URL := https://github.com/savoirfairelinux/opendht/archive/v$(OPENDHT_VERSION).tar.gz
 
 PKGS += opendht
@@ -9,7 +9,7 @@ endif
 
 DEPS_opendht += msgpack argon2 libressl restinio jsoncpp gnutls asio fmt simdutf
 
-OPENDHT_CONF = -DBUILD_SHARED_LIBS=Off \
+OPENDHT_CONF = -DCMAKE_CXX_STANDARD=20 \
 	-DBUILD_TESTING=Off \
 	-DOPENDHT_DOCUMENTATION=Off \
 	-DOPENDHT_PROXY_CLIENT=On \
@@ -28,8 +28,4 @@ opendht: opendht-$(OPENDHT_VERSION).tar.gz
 	$(UNPACK)
 	$(MOVE)
 
-.opendht: opendht toolchain.cmake .sum-opendht
-	cd $< && mkdir -p build
-	cd $< && cd build && $(HOSTVARS) $(CMAKE) $(OPENDHT_CONF) ..
-	cd $< && cd build && $(MAKE) install
-	touch $@
+CMAKE_PKGS += opendht

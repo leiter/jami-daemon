@@ -1,6 +1,6 @@
 {
     "name": "dhtnet",
-    "version": "6dd5a5e3eb15cebafa212e134ce436705c6d5fc5",
+    "version": "cff03260fa037f59d6768bac26014b01c07b3fb9",
     "url": "https://git.jami.net/savoirfairelinux/dhtnet/-/archive/__VERSION__/dhtnet.tar.gz",
     "deps": [
         "opendht",
@@ -14,7 +14,9 @@
     "defines": [
         "BUILD_SHARED_LIBS=0",
         "BUILD_TESTING=0",
-        "BUILD_BENCHMARKS=0"
+        "BUILD_BENCHMARKS=0",
+        "BUILD_EXAMPLE=0",
+        "CMAKE_CXX_STANDARD=20"
     ],
     "patches": [],
     "win_patches": [],

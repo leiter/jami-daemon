@@ -46,7 +46,7 @@
 
 #include "uri.h"
 
-#include "client/ring_signal.h"
+#include "client/jami_signal.h"
 #include "jami/call_const.h"
 #include "jami/account_const.h"
 
@@ -195,7 +195,7 @@ struct AccountPeerInfo
 struct JamiAccount::DiscoveredPeer
 {
     std::string displayName;
-    std::shared_ptr<Task> cleanupTask;
+    std::unique_ptr<asio::steady_timer> cleanupTimer;
 };
 
 static constexpr const char* const RING_URI_PREFIX = "ring:";
@@ -231,11 +231,11 @@ parseJamiUri(std::string_view toUrl)
 {
     auto sufix = stripPrefix(toUrl);
     if (sufix.length() < 40)
-        throw std::invalid_argument("ID must be a Jami infohash");
+        throw std::invalid_argument("Not a valid Jami URI: " + toUrl);
 
     const std::string_view toUri = sufix.substr(0, 40);
     if (std::find_if_not(toUri.cbegin(), toUri.cend(), ::isxdigit) != toUri.cend())
-        throw std::invalid_argument("ID must be a Jami infohash");
+        throw std::invalid_argument("Not a valid Jami URI: " + toUrl);
     return toUri;
 }
 
@@ -251,7 +251,8 @@ JamiAccount::JamiAccount(const std::string& accountId)
     : SIPAccountBase(accountId)
     , cachePath_(fileutils::get_cache_dir() / accountId)
     , dataPath_(cachePath_ / "values")
-    , certStore_ {std::make_unique<dhtnet::tls::CertificateStore>(idPath_, Logger::dhtLogger())}
+    , logger_(Logger::dhtLogger(fmt::format("Account {}", accountId)))
+    , certStore_ {std::make_unique<dhtnet::tls::CertificateStore>(idPath_, logger_)}
     , dht_(new dht::DhtRunner)
     , treatedMessages_(cachePath_ / TREATED_PATH)
     , connectionManager_ {}
@@ -392,17 +393,17 @@ JamiAccount::newOutgoingCallHelper(const std::shared_ptr<SIPCall>& call, const U
                                      // be called in main thread
                                      runOnMainThread([wthis_, regName, address, response, call]() {
                                          if (response != NameDirectory::Response::found) {
-                                             call->onFailure(EINVAL);
+                                             call->onFailure(PJSIP_SC_NOT_FOUND);
                                              return;
                                          }
                                          if (auto sthis = wthis_.lock()) {
                                              try {
                                                  sthis->startOutgoingCall(call, regName);
                                              } catch (...) {
-                                                 call->onFailure(ENOENT);
+                                                 call->onFailure(PJSIP_SC_NOT_FOUND);
                                              }
                                          } else {
-                                             call->onFailure();
+                                             call->onFailure(PJSIP_SC_SERVICE_UNAVAILABLE);
                                          }
                                      });
                                  });
@@ -592,7 +593,7 @@ void
 JamiAccount::startOutgoingCall(const std::shared_ptr<SIPCall>& call, const std::string& toUri)
 {
     if (not accountManager_ or not dht_) {
-        call->onFailure(ENETDOWN);
+        call->onFailure(PJSIP_SC_SERVICE_UNAVAILABLE);
         return;
     }
 
@@ -628,7 +629,7 @@ JamiAccount::startOutgoingCall(const std::shared_ptr<SIPCall>& call, const std::
         if (eraseDummy) {
             // Mark the temp call as failed to stop the main call if necessary
             if (dummyCall)
-                dummyCall->onFailure(static_cast<int>(std::errc::no_such_device_or_address));
+                dummyCall->onFailure(PJSIP_SC_TEMPORARILY_UNAVAILABLE);
             return;
         }
         auto call = wCall.lock();
@@ -749,7 +750,7 @@ JamiAccount::startOutgoingCall(const std::shared_ptr<SIPCall>& call, const std::
                     JAMI_WARNING("[call:{}] No devices found", call->getCallId());
                     // Note: if a P2P connection exists, the call will be at least in CONNECTING
                     if (call->getConnectionState() == Call::ConnectionState::TRYING)
-                        call->onFailure(static_cast<int>(std::errc::no_such_device_or_address));
+                        call->onFailure(PJSIP_SC_TEMPORARILY_UNAVAILABLE);
                 }
             }
         });
@@ -1185,7 +1186,7 @@ JamiAccount::loadAccount(const std::string& archive_password_scheme,
         [this](const std::string& uri, const std::string& convFromReq) {
             dht::ThreadPool::io().run([w = weak(), convFromReq, uri] {
                 if (auto shared = w.lock()) {
-                    auto cm = shared->convModule(true);
+                    shared->convModule(true);
                     // Remove cached payload if there is one
                     auto requestPath = shared->cachePath_ / "requests" / uri;
                     dhtnet::fileutils::remove(requestPath);
@@ -1393,6 +1394,7 @@ JamiAccount::loadAccount(const std::string& archive_password_scheme,
                     if (migrating) {
                         Migration::setState(getAccountID(), Migration::State::SUCCESS);
                     }
+                    setRegistrationState(RegistrationState::UNREGISTERED);
                     if (not info.photo.empty() or not info.displayName.empty()) {
                         try {
                             auto newProfile = vCard::utils::initVcard();
@@ -1414,7 +1416,6 @@ JamiAccount::loadAccount(const std::string& archive_password_scheme,
                                          e.what());
                         }
                     }
-                    setRegistrationState(RegistrationState::UNREGISTERED);
                     doRegister();
                 },
                 [w = weak(), id, accountId = getAccountID(), migrating](AccountManager::AuthError error,
@@ -1926,7 +1927,7 @@ JamiAccount::doRegister_()
 
         auto dht_log_level = Manager::instance().dhtLogLevel;
         if (dht_log_level > 0) {
-            context.logger = Logger::dhtLogger();
+            context.logger = logger_;
         }
         context.certificateStore = [&](const dht::InfoHash& pk_id) {
             std::vector<std::shared_ptr<dht::crypto::Certificate>> ret;
@@ -2026,11 +2027,10 @@ JamiAccount::doRegister_()
         };
 
         dht_->run(dhtPortUsed(), config, std::move(context));
+        dhtBoundPort_ = dht_->getBoundPort();
 
         for (const auto& bootstrap : loadBootstrap())
             dht_->bootstrap(bootstrap);
-
-        dhtBoundPort_ = dht_->getBoundPort();
 
         accountManager_->setDht(dht_);
 
@@ -2459,11 +2459,11 @@ JamiAccount::reloadContacts()
 void
 JamiAccount::connectivityChanged()
 {
-    JAMI_WARN("connectivityChanged");
     if (not isUsable()) {
         // nothing to do
         return;
     }
+    JAMI_WARNING("[{}] connectivityChanged", getAccountID());
 
     if (auto cm = convModule())
         cm->connectivityChanged();
@@ -3414,9 +3414,7 @@ JamiAccount::startAccountDiscovery()
                 auto& dp = discoveredPeers_[v.accountId];
                 dp.displayName = v.displayName;
                 discoveredPeerMap_[v.accountId.toString()] = v.displayName;
-                if (dp.cleanupTask) {
-                    dp.cleanupTask->cancel();
-                } else {
+                if (!dp.cleanupTimer) {
                     // Avoid repeat reception of same peer
                     JAMI_LOG("Account discovered: {}: {}", v.displayName, v.accountId.to_c_str());
                     // Send Added Peer and corrsponding accoundID
@@ -3424,9 +3422,14 @@ JamiAccount::startAccountDiscovery()
                                                                                 v.accountId.toString(),
                                                                                 0,
                                                                                 v.displayName);
+                    dp.cleanupTimer = std::make_unique<asio::steady_timer>(*Manager::instance().ioContext(),
+                                                                           PEER_DISCOVERY_EXPIRATION);
                 }
-                dp.cleanupTask = Manager::instance().scheduler().scheduleIn(
-                    [w = weak(), p = v.accountId, a = v.displayName] {
+                dp.cleanupTimer->expires_after(PEER_DISCOVERY_EXPIRATION);
+                dp.cleanupTimer->async_wait(
+                    [w = weak(), p = v.accountId, a = v.displayName](const asio::error_code& ec) {
+                        if (ec)
+                            return;
                         if (auto this_ = w.lock()) {
                             {
                                 std::lock_guard lc(this_->discoveryMapMtx_);
@@ -3440,8 +3443,7 @@ JamiAccount::startAccountDiscovery()
                                                                                         a);
                         }
                         JAMI_INFO("Account removed from discovery list: %s", a.c_str());
-                    },
-                    PEER_DISCOVERY_EXPIRATION);
+                    });
             }
         });
 }
@@ -3816,6 +3818,11 @@ JamiAccount::requestSIPConnection(const std::string& peerId,
         return;
     }
     JAMI_LOG("[Account {}] Ask {} for a new SIP channel", getAccountID(), deviceId);
+    dhtnet::ConnectDeviceOptions options;
+    options.noNewSocket = false;
+    options.forceNewSocket = forceNewConnection;
+    options.connType = connectionType;
+    options.channelTimeout = 3s;
     connectionManager_->connectDevice(
         deviceId,
         "sip",
@@ -3831,11 +3838,9 @@ JamiAccount::requestSIPConnection(const std::string& peerId,
             // Stop searching pending call.
             shared->callConnectionClosed(id.second, true);
             if (pc)
-                pc->onFailure();
+                pc->onFailure(PJSIP_SC_TEMPORARILY_UNAVAILABLE);
         },
-        false,
-        forceNewConnection,
-        connectionType);
+        options);
 }
 
 bool
@@ -4184,8 +4189,23 @@ JamiAccount::sendFile(const std::string& conversationId,
 {
     if (!std::filesystem::is_regular_file(path)) {
         JAMI_ERROR("Invalid filename '{}'", path);
+        emitSignal<libjami::ConversationSignal::OnConversationError>(getAccountID(),
+                                                                     conversationId,
+                                                                     EVALIDFETCH,
+                                                                     "Invalid filename.");
         return;
     }
+
+    if (fileutils::size(path) < 0) {
+        JAMI_ERROR("Negative file size, user probably doesn't have the appropriate permissions for '{}'", path);
+        emitSignal<libjami::ConversationSignal::OnConversationError>(
+            getAccountID(),
+            conversationId,
+            EVALIDFETCH,
+            "Negative file size, could be due to insufficient file permissions.");
+        return;
+    }
+
     // NOTE: this sendMessage is in a computation thread because
     // sha3sum can take quite some time to computer if the user decide
     // to send a big file
@@ -4227,7 +4247,7 @@ JamiAccount::sendFile(const std::string& conversationId,
                                                   accId,
                                                   conversationId,
                                                   commitId,
-                                                  path.u8string(),
+                                                  path.string(),
                                                   uint32_t(libjami::DataTransferEventCode::invalid));
                                           } else {
                                               // Signal to notify clients that the file is copied and can be
@@ -4237,7 +4257,7 @@ JamiAccount::sendFile(const std::string& conversationId,
                                                   accId,
                                                   conversationId,
                                                   commitId,
-                                                  path.u8string(),
+                                                  path.string(),
                                                   uint32_t(libjami::DataTransferEventCode::created));
                                           }
                                       } else {
@@ -4245,7 +4265,7 @@ JamiAccount::sendFile(const std::string& conversationId,
                                               accId,
                                               conversationId,
                                               commitId,
-                                              path.u8string(),
+                                              path.string(),
                                               uint32_t(libjami::DataTransferEventCode::created));
                                       }
                                   }
@@ -4429,7 +4449,7 @@ JamiAccount::initConnectionManager()
         connectionManagerConfig->turnServerRealm = config().turnServerRealm;
         connectionManagerConfig->turnEnabled = config().turnEnabled;
         connectionManagerConfig->cachePath = cachePath_;
-        connectionManagerConfig->logger = Logger::dhtLogger();
+        connectionManagerConfig->logger = logger_;
         connectionManagerConfig->factory = Manager::instance().getIceTransportFactory();
         connectionManagerConfig->turnCache = turnCache_;
         connectionManagerConfig->rng = std::make_unique<std::mt19937_64>(dht::crypto::getDerivedRandomEngine(rand));

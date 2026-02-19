@@ -29,7 +29,7 @@
 #ifdef ENABLE_VIDEO
 #include "video/sinkclient.h"
 #endif
-#include "client/ring_signal.h"
+#include "client/jami_signal.h"
 #include "audio/ringbufferpool.h"
 #include "jami/media_const.h"
 #include "libav_utils.h"
@@ -44,7 +44,6 @@
 #include <algorithm>
 #include <cstdlib>
 #include <cstring> // std::memset
-#include <ciso646> // fix windows compiler bug
 
 extern "C" {
 #include <libavutil/display.h>
@@ -752,8 +751,10 @@ getAudioInput(const std::string& device)
 bool
 VideoManager::hasRunningPlayers()
 {
-    if (auto vmgr = Manager::instance().getVideoManager())
+    if (auto vmgr = Manager::instance().getVideoManager()) {
+        std::scoped_lock<std::mutex> lk(vmgr->mediaPlayersMutex);
         return !vmgr->mediaPlayers.empty();
+    }
     return false;
 }
 
@@ -761,6 +762,7 @@ std::shared_ptr<MediaPlayer>
 getMediaPlayer(const std::string& id)
 {
     if (auto vmgr = Manager::instance().getVideoManager()) {
+        std::scoped_lock<std::mutex> lk(vmgr->mediaPlayersMutex);
         auto it = vmgr->mediaPlayers.find(id);
         if (it != vmgr->mediaPlayers.end()) {
             return it->second;
@@ -773,6 +775,7 @@ std::string
 createMediaPlayer(const std::string& path)
 {
     if (auto vmgr = Manager::instance().getVideoManager()) {
+        std::scoped_lock<std::mutex> lk(vmgr->mediaPlayersMutex);
         auto& player = vmgr->mediaPlayers[path];
         if (!player) {
             player = std::make_shared<MediaPlayer>(path);
@@ -795,8 +798,10 @@ pausePlayer(const std::string& id, bool pause)
 bool
 closeMediaPlayer(const std::string& id)
 {
-    if (auto vm = Manager::instance().getVideoManager())
+    if (auto vm = Manager::instance().getVideoManager()) {
+        std::scoped_lock<std::mutex> lk(vm->mediaPlayersMutex);
         return vm->mediaPlayers.erase(id) > 0;
+    }
     return false;
 }
 

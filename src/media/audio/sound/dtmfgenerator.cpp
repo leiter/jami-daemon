@@ -19,29 +19,38 @@
 
 #include <cmath>
 #include <cassert>
-#include <ciso646> // fix windows compiler bug
 
 namespace jami {
+
+/** Struct to handle a DTMF */
+struct DTMFTone
+{
+    unsigned char code; /** Code of the tone */
+    unsigned lower;     /** Lower frequency */
+    unsigned higher;    /** Higher frequency */
+};
 
 /*
  * Tone frequencies
  */
-const DTMFGenerator::DTMFTone DTMFGenerator::tones_[] = {{'0', 941, 1336},
-                                                         {'1', 697, 1209},
-                                                         {'2', 697, 1336},
-                                                         {'3', 697, 1477},
-                                                         {'4', 770, 1209},
-                                                         {'5', 770, 1336},
-                                                         {'6', 770, 1477},
-                                                         {'7', 852, 1209},
-                                                         {'8', 852, 1336},
-                                                         {'9', 852, 1477},
-                                                         {'A', 697, 1633},
-                                                         {'B', 770, 1633},
-                                                         {'C', 852, 1633},
-                                                         {'D', 941, 1633},
-                                                         {'*', 941, 1209},
-                                                         {'#', 941, 1477}};
+constexpr DTMFTone TONES[] = {
+    {'0', 941, 1336},
+    {'1', 697, 1209},
+    {'2', 697, 1336},
+    {'3', 697, 1477},
+    {'4', 770, 1209},
+    {'5', 770, 1336},
+    {'6', 770, 1477},
+    {'7', 852, 1209},
+    {'8', 852, 1336},
+    {'9', 852, 1477},
+    {'A', 697, 1633},
+    {'B', 770, 1633},
+    {'C', 852, 1633},
+    {'D', 941, 1633},
+    {'*', 941, 1209},
+    {'#', 941, 1477}
+};
 
 /*
  * Initialize the generator
@@ -118,16 +127,16 @@ DTMFGenerator::getNextSamples(AVFrame* frame)
 }
 
 libjami::FrameBuffer
-DTMFGenerator::fillToneBuffer(int index)
+DTMFGenerator::fillToneBuffer(unsigned index)
 {
-    assert(index >= 0 and index < NUM_TONES);
+    assert(index < NUM_TONES);
     libjami::FrameBuffer ptr(av_frame_alloc());
     ptr->nb_samples = sampleRate_;
     ptr->format = tone_.getFormat().sampleFormat;
     ptr->sample_rate = sampleRate_;
     JAMI_LIBAV_SET_CHANNEL_LAYOUT_FROM_MASK(ptr.get(), AV_CH_LAYOUT_MONO);
     av_frame_get_buffer(ptr.get(), 0);
-    tone_.genSin(ptr.get(), 0, ptr->nb_samples, tones_[index].higher, tones_[index].lower);
+    tone_.genSin(ptr.get(), 0, ptr->nb_samples, TONES[index].higher, TONES[index].lower);
     return ptr;
 }
 

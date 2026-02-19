@@ -29,7 +29,6 @@
 #include "jamiaccount_config.h"
 
 #include "noncopyable.h"
-#include "scheduled_executor.h"
 #include "gitserver.h"
 #include "channel_handler.h"
 #include "conversation_module.h"
@@ -662,11 +661,6 @@ private:
 
     std::string getDhtProxyServer(const std::string& serverList);
     void loadCachedProxyServer(std::function<void(const std::string&)> cb);
-
-    /**
-     * The TLS settings, used only if tls is chosen as a sip transport.
-     */
-    void generateDhParams();
 
     void newOutgoingCallHelper(const std::shared_ptr<SIPCall>& call, const Uri& uri);
     std::shared_ptr<SIPCall> newSwarmOutgoingCallHelper(const Uri& uri, const std::vector<libjami::MediaMap>& mediaList);
